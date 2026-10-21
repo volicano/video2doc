@@ -191,6 +191,41 @@ cookies_from_browser = "chrome"
 
 ---
 
+## 常见问题
+
+**模型下载卡住 / 报 401、CAS Client Error**
+
+huggingface 的 xet 加速在部分网络下会失败，关掉它，或者直接换镜像：
+
+```powershell
+$env:HF_HUB_DISABLE_XET = "1"
+$env:HF_ENDPOINT = "https://hf-mirror.com"   # 国内网络
+```
+
+**B 站视频下载失败**
+
+高清和部分视频需要登录态，用浏览器的 cookie：
+
+```toml
+[video]
+cookies_from_browser = "chrome"
+```
+
+**YouTube 连不上**
+
+```toml
+[network]
+proxy = "http://127.0.0.1:7890"
+```
+
+**识别出来的术语错得离谱**
+
+先换大模型（`large-v3`），再开 `correct_with_llm` 并给一份 `glossary`。小模型（`tiny`）+ 中文技术内容，不校正基本不能用。
+
+**同一个视频跑了两遍，结果不一样**
+
+说明命中了不同的缓存路径。看 `job.json` 里每阶段的 `fingerprint`，或者直接加 `--force` 全量重跑。
+
 ## 已知限制
 
 - 只处理视频的第一 P（多 P 视频会在日志里提示）。
