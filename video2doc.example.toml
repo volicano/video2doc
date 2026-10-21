@@ -1,0 +1,46 @@
+# video2doc 配置示例：复制为 video2doc.toml 后按需修改
+# 所有字段都有默认值，只有想改的才需要写在这里
+
+[video]
+prefer_subtitles = true      # 有 CC 字幕就直接用，跳过语音识别
+max_height = 1080
+# cookies_from_browser = "chrome"   # 需要登录才能看的高清/字幕
+
+[asr]
+# 本地：faster-whisper（需 pip install "video2doc[local]"）
+# 云端：openai（任何兼容 OpenAI /audio/transcriptions 的服务）
+provider = "faster-whisper"
+model = "large-v3"
+language = "zh"
+hotwords = ["闭包", "垃圾回收", "时间复杂度", "AQS", "CAS"]
+auto_hotwords = true
+device = "auto"
+compute_type = "auto"
+# 用 LLM 修术语/错别字（默认关闭：会把字幕文本发到云端）
+correct_with_llm = false
+# glossary = ["闭包", "词法环境", "垃圾回收"]
+
+# 用云端时改成这样：
+# provider   = "openai"
+# model      = "whisper-1"
+# base_url   = "https://api.openai.com/v1"
+# api_key_env = "OPENAI_API_KEY"
+
+[llm]
+# 一个适配器覆盖 DeepSeek / 通义 / GLM / Ollama / vLLM
+provider = "openai-compatible"
+base_url = "https://api.deepseek.com/v1"
+model = "deepseek-chat"
+api_key_env = "DEEPSEEK_API_KEY"
+
+[frames]
+strategy = "info-density"
+max_frames = 40
+min_gap_sec = 8
+
+[render]
+format = "html-single"
+theme = "light"
+
+[network]
+# proxy = "http://127.0.0.1:7890"   # YouTube 直连不通时使用

@@ -1,0 +1,212 @@
+"""配置加载与校验。
+
+设计原则：所有可替换的东西都放进配置，代码里不写死模型名和密钥。
+密钥一律通过环境变量注入（只记录变量名，不落盘）。
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import tomllib
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from .errors import ConfigError
+
+DEFAULT_CONFIG_NAMES = ("video2doc.toml", "v2doc.toml")
+
+
+class Section(BaseModel):
+    """禁止未知字段，让拼写错误在启动时就暴露。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class VideoConfig(Section):
+    # 有 CC 字幕时直接用字幕，跳过 ASR（快、准、省钱）
+    prefer_subtitles: bool = True
+    # 单条视频的时长上限，防止误传 10 小时直播
+    max_duration_min: int = 120
+    # 下载时的最大分辨率；太高只增加体积，OCR 收益有限
+    max_height: int = 1080
+    subtitle_langs: list[str] = Field(
+        default_factory=lambda: ["zh-Hans", "zh-CN", "zh", "zh-Hant", "en"]
+    )
+    # 需要登录才能看的高清/字幕，可填 chrome / edge / firefox
+    cookies_from_browser: str | None = None
+
+
+class ASRConfig(Section):
+    # faster-whisper（本地） | openai（任何兼容 /audio/transcriptions 的服务）
+    provider: str = "faster-whisper"
+    model: str = "large-v3"
+    language: str = "zh"
+    # 用户手写热词，优先级最高
+    hotwords: list[str] = Field(default_factory=list)
+    # 从标题/标签自动补充热词
+    auto_hotwords: bool = True
+    # 额外的 initial_prompt，用于注入领域背景
+    initial_prompt: str | None = None
+    # 用 LLM 做一遍术语/错别字校正（默认关闭：会把文本发到云端）
+    correct_with_llm: bool = False
+    # 校正时参考的词表，留空则复用 hotwords
+    glossary: list[str] = Field(default_factory=list)
+
+    # faster-whisper 专用
+    device: str = "auto"  # auto | cuda | cpu
+    compute_type: str = "auto"  # auto | float16 | int8 | int8_float16
+    vad: bool = True
+    beam_size: int = 5
+
+    # openai 兼容服务专用
+    base_url: str = "https://api.openai.com/v1"
+    api_key_env: str = "OPENAI_API_KEY"
+    timeout_sec: int = 900
+
+
+class LLMConfig(Section):
+    provider: str = "openai-compatible"
+    base_url: str = "https://api.deepseek.com/v1"
+    model: str = "deepseek-chat"
+    api_key_env: str = "DEEPSEEK_API_KEY"
+    temperature: float = 0.3
+    timeout_sec: int = 300
+
+
+class OCRConfig(Section):
+    provider: str = "auto"  # auto | paddle | vision-llm | none
+    language: str = "ch"
+
+
+class FramesConfig(Section):
+    strategy: str = "info-density"  # uniform | scene | info-density
+    max_frames: int = 40
+    min_gap_sec: float = 8.0
+    max_width: int = 1280
+
+
+class RenderConfig(Section):
+    format: str = "html-single"
+    theme: str = "light"
+    embed_images: bool = True
+
+
+class NetworkConfig(Section):
+    proxy: str | None = None
+
+
+class Config(Section):
+    video: VideoConfig = Field(default_factory=VideoConfig)
+    asr: ASRConfig = Field(default_factory=ASRConfig)
+    llm: LLMConfig = Field(default_factory=LLMConfig)
+    ocr: OCRConfig = Field(default_factory=OCRConfig)
+    frames: FramesConfig = Field(default_factory=FramesConfig)
+    render: RenderConfig = Field(default_factory=RenderConfig)
+    network: NetworkConfig = Field(default_factory=NetworkConfig)
+
+    @property
+    def hash(self) -> str:
+        payload = json.dumps(
+            self.model_dump(), sort_keys=True, ensure_ascii=False, separators=(",", ":")
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def find_config(explicit: Path | None = None, *, cwd: Path | None = None) -> Path | None:
+    """按优先级找配置文件：显式指定 > 当前目录的约定文件名。"""
+    if explicit is not None:
+        if not explicit.exists():
+            raise ConfigError(f"配置文件不存在：{explicit}")
+        return explicit
+    base = cwd or Path.cwd()
+    for name in DEFAULT_CONFIG_NAMES:
+        candidate = base / name
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def load_config(path: Path | None = None, *, cwd: Path | None = None) -> Config:
+    resolved = find_config(path, cwd=cwd)
+    raw: dict[str, Any] = {}
+    if resolved is not None:
+        try:
+            with resolved.open("rb") as fh:
+                raw = tomllib.load(fh)
+        except tomllib.TOMLDecodeError as exc:
+            raise ConfigError(f"配置文件语法错误：{resolved}\n{exc}") from exc
+        except OSError as exc:
+            raise ConfigError(f"无法读取配置文件：{resolved}（{exc}）") from exc
+
+    try:
+        return Config.model_validate(raw)
+    except ValidationError as exc:
+        raise ConfigError(
+            f"配置文件校验失败：{resolved or '<默认值>'}\n{_format_errors(exc)}"
+        ) from exc
+
+
+def _format_errors(exc: ValidationError) -> str:
+    lines = []
+    for error in exc.errors():
+        location = ".".join(str(part) for part in error["loc"]) or "<root>"
+        lines.append(f"  - {location}: {error['msg']}")
+    return "\n".join(lines)
+
+
+def config_snapshot(config: Config) -> dict[str, Any]:
+    """写入 job 目录，保证半年后还能复现这次运行。"""
+    return config.model_dump()
+
+
+EXAMPLE_CONFIG = """\
+# video2doc 配置示例：复制为 video2doc.toml 后按需修改
+# 所有字段都有默认值，只有想改的才需要写在这里
+
+[video]
+prefer_subtitles = true      # 有 CC 字幕就直接用，跳过语音识别
+max_height = 1080
+# cookies_from_browser = "chrome"   # 需要登录才能看的高清/字幕
+
+[asr]
+# 本地：faster-whisper（需 pip install "video2doc[local]"）
+# 云端：openai（任何兼容 OpenAI /audio/transcriptions 的服务）
+provider = "faster-whisper"
+model = "large-v3"
+language = "zh"
+hotwords = ["闭包", "垃圾回收", "时间复杂度", "AQS", "CAS"]
+auto_hotwords = true
+device = "auto"
+compute_type = "auto"
+# 用 LLM 修术语/错别字（默认关闭：会把字幕文本发到云端）
+correct_with_llm = false
+# glossary = ["闭包", "词法环境", "垃圾回收"]
+
+# 用云端时改成这样：
+# provider   = "openai"
+# model      = "whisper-1"
+# base_url   = "https://api.openai.com/v1"
+# api_key_env = "OPENAI_API_KEY"
+
+[llm]
+# 一个适配器覆盖 DeepSeek / 通义 / GLM / Ollama / vLLM
+provider = "openai-compatible"
+base_url = "https://api.deepseek.com/v1"
+model = "deepseek-chat"
+api_key_env = "DEEPSEEK_API_KEY"
+
+[frames]
+strategy = "info-density"
+max_frames = 40
+min_gap_sec = 8
+
+[render]
+format = "html-single"
+theme = "light"
+
+[network]
+# proxy = "http://127.0.0.1:7890"   # YouTube 直连不通时使用
+"""

@@ -1,0 +1,10 @@
+# 统一用 LF，避免 Windows 贡献者把整个仓库变成 CRLF diff
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.png binary
+*.jpg binary
+*.webp binary
+*.mp4 binary

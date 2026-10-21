@@ -1,0 +1,58 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from video2doc.config import Config, load_config
+from video2doc.errors import ConfigError
+
+
+def test_defaults() -> None:
+    config = Config()
+    assert config.asr.provider == "faster-whisper"
+    assert config.asr.language == "zh"
+    assert config.video.prefer_subtitles is True
+    assert config.render.format == "html-single"
+
+
+def test_load_toml_overrides(tmp_path: Path) -> None:
+    path = tmp_path / "video2doc.toml"
+    path.write_text(
+        """
+[asr]
+provider = "openai"
+model = "whisper-1"
+
+[frames]
+max_frames = 12
+""",
+        encoding="utf-8",
+    )
+    config = load_config(path)
+    assert config.asr.provider == "openai"
+    assert config.asr.model == "whisper-1"
+    assert config.frames.max_frames == 12
+    # 未覆盖的字段保留默认值
+    assert config.video.max_height == 1080
+
+
+def test_unknown_key_is_reported(tmp_path: Path) -> None:
+    path = tmp_path / "video2doc.toml"
+    path.write_text("[asr]\nprovder = \"openai\"\n", encoding="utf-8")
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(path)
+    assert "asr.provder" in str(excinfo.value)
+
+
+def test_missing_explicit_config(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError):
+        load_config(tmp_path / "nope.toml")
+
+
+def test_config_hash_changes_with_content() -> None:
+    a = Config()
+    b = Config()
+    assert a.hash == b.hash
+    b.asr.model = "small"
+    assert a.hash != b.hash
