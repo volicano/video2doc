@@ -4,6 +4,10 @@
 
 输入一条 B 站 / YouTube 链接或本地视频，输出一份可以直接发布的学习笔记：结构化的章节、可跳回原片的时间戳、关键画面截图。
 
+[![CI](https://github.com/video2doc/video2doc/actions/workflows/ci.yml/badge.svg)](https://github.com/video2doc/video2doc/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](pyproject.toml)
+
 > **项目状态：M4 完成（批量处理、人工改稿、本地校对界面均已可用）**
 > 当前可用：视频下载 → 音轨抽取 → 字幕复用 / 语音识别 → 可选的术语校正 → 抽帧 → 画面文字识别 → 图文对齐 → LLM 语义分段 → 逐节写作 → 质检 → **单页 HTML 教程**；批量跑批、单节重写、人工覆盖层、不调模型的重新渲染，以及浏览器里的可视化校对（`v2doc review`）也已就绪。
 > 下一步：更多 ASR、说话人分离与模板系统（M5）。
