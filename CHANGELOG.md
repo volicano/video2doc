@@ -2,6 +2,15 @@
 
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.1.1] - 2026-10-22
+
+打包修正，无代码变更。
+
+### 修正
+
+- PyPI 项目页的安装说明改为 `pip install "video2doc[local,ocr]"` / `pip install video2doc`，不再要求先克隆源码
+- README 增加 PyPI badge；使用手册同步 PyPI 安装方式，并更新测试数量
+
 ## [0.1.0] - 2026-10-22
 
 首个公开版本：从一条视频链接（或本地文件）到一份单页图文教程的完整流水线。
@@ -46,3 +55,4 @@
 完整安装、配置、命令与排错说明见 [docs/使用手册.md](docs/使用手册.md)。
 
 [0.1.0]: https://github.com/volicano/video2doc/releases/tag/v0.1.0
+[0.1.1]: https://github.com/volicano/video2doc/releases/tag/v0.1.1
