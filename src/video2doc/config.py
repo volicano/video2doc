@@ -73,8 +73,9 @@ class LLMConfig(Section):
     model: str = "deepseek-chat"
     api_key_env: str = "DEEPSEEK_API_KEY"
     temperature: float = 0.3
-    # 单次回答的最大 token；写作阶段一节正文通常 1~2k token，4096 够用
-    max_tokens: int = 4096
+    # 单次回答的最大 token；写作阶段一节正文通常 1~2k token，
+    # 但素材长、代码多时会写超，4096 容易把 JSON 截断，留足 8192
+    max_tokens: int = 8192
     timeout_sec: int = 300
 
 
@@ -244,7 +245,7 @@ provider = "openai-compatible"
 base_url = "https://api.deepseek.com/v1"
 model = "deepseek-chat"
 api_key_env = "DEEPSEEK_API_KEY"
-# max_tokens = 4096            # 单节正文太长被截断时调大
+# max_tokens = 8192            # 单节正文太长被截断时调大
 
 [ocr]
 # 画面文字识别：rapidocr-onnxruntime（离线）；没装会自动跳过

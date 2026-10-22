@@ -196,7 +196,7 @@ provider = "openai-compatible"
 base_url = "https://api.deepseek.com/v1"
 model = "deepseek-chat"
 api_key_env = "DEEPSEEK_API_KEY"
-max_tokens = 4096          # 单节正文被截断时调大
+max_tokens = 8192          # 单节正文被截断时调大
 
 [write]
 enabled = true

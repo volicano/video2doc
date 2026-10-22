@@ -18,7 +18,7 @@ from .base import LLMProvider, ProgressFn, register
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 RETRY_HINT = (
     "\n\n注意：上一次输出没有形成完整 JSON（可能被长度限制截断）。"
-    "请重新输出合法 JSON，并精简正文长度。"
+    "请重新输出合法 JSON，并把正文压缩到 500 字以内：宁可少写，也不要被截断。"
 )
 
 
@@ -98,9 +98,18 @@ class OpenAICompatibleLLM(LLMProvider):
 
             try:
                 return _extract_json(content)
-            except StageError:
-                # 被 max_tokens 截断时重试一次，提示模型压缩篇幅
+            except StageError as exc:
+                # 被 max_tokens 截断时重试，提示模型压缩篇幅
+                truncated = finish == "length"
                 if attempt >= 2:
+                    if truncated:
+                        raise StageError(
+                            "LLM 输出被 max_tokens 截断，没能凑成完整 JSON",
+                            hint=(
+                                f"当前 llm.max_tokens = {self.config.max_tokens}：调大它，"
+                                "或调小 write.max_section_chars 后再重跑。"
+                            ),
+                        ) from exc
                     raise
                 user_prompt = user + RETRY_HINT
                 last_error = f"JSON 解析失败（finish_reason={finish or '未知'}）"
