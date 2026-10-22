@@ -77,21 +77,35 @@ class LLMConfig(Section):
 
 
 class OCRConfig(Section):
-    provider: str = "auto"  # auto | paddle | vision-llm | none
+    provider: str = "auto"  # auto | rapidocr | none
     language: str = "ch"
+    # 低于这个置信度的文字块直接丢掉，避免把噪声当内容
+    min_confidence: float = 0.5
 
 
 class FramesConfig(Section):
-    strategy: str = "info-density"  # uniform | scene | info-density
+    strategy: str = "info-density"  # uniform | info-density
+    # 0 = 按视频长度自动决定（短视频 1s，长视频 2~3s）
+    sample_interval_sec: float = 0.0
+    analysis_width: int = 320
     max_frames: int = 40
     min_gap_sec: float = 8.0
-    max_width: int = 1280
+    # 相邻帧差异超过它就算换镜头（0.1 大约相当于画面整体变了 10%）
+    change_threshold: float = 0.10
+    # 白底 PPT 换页时像素差分很小，感知哈希却能看出来；汉明距离超过它就切
+    hash_threshold: int = 12
+    # 人脸口播镜头的分数通常低于 0.04，低于阈值直接不选
+    min_shot_score: float = 0.04
+    # 时间轴分几段做覆盖，避免「前五分钟讲得最密」压掉后面全部内容
+    coverage_buckets: int = 8
 
 
 class RenderConfig(Section):
     format: str = "html-single"
     theme: str = "light"
     embed_images: bool = True
+    # 生成 preview.html，用来肉眼检查抽帧和 OCR 选得对不对
+    debug_html: bool = True
 
 
 class NetworkConfig(Section):
@@ -134,8 +148,11 @@ def load_config(path: Path | None = None, *, cwd: Path | None = None) -> Config:
     raw: dict[str, Any] = {}
     if resolved is not None:
         try:
-            with resolved.open("rb") as fh:
-                raw = tomllib.load(fh)
+            # Windows 记事本保存的 UTF-8 会带 BOM，tomllib 不认，先剥掉
+            text = resolved.read_bytes().removeprefix(b"\xef\xbb\xbf").decode("utf-8")
+            raw = tomllib.loads(text)
+        except UnicodeDecodeError as exc:
+            raise ConfigError(f"配置文件不是 UTF-8 编码：{resolved}") from exc
         except tomllib.TOMLDecodeError as exc:
             raise ConfigError(f"配置文件语法错误：{resolved}\n{exc}") from exc
         except OSError as exc:
@@ -198,14 +215,24 @@ base_url = "https://api.deepseek.com/v1"
 model = "deepseek-chat"
 api_key_env = "DEEPSEEK_API_KEY"
 
+[ocr]
+# 画面文字识别：rapidocr-onnxruntime（离线）；没装会自动跳过
+provider = "auto"            # auto | rapidocr | none
+min_confidence = 0.5
+
 [frames]
-strategy = "info-density"
+strategy = "info-density"    # uniform 用于对比
 max_frames = 40
 min_gap_sec = 8
+change_threshold = 0.10      # 相邻帧差异超过它就算换镜头
+hash_threshold = 12          # 白底 PPT 换页的感知哈希阈值
+min_shot_score = 0.04        # 低于它基本是纯人脸口播
+coverage_buckets = 8         # 时间轴分几段，保证覆盖
 
 [render]
 format = "html-single"
 theme = "light"
+debug_html = true            # 生成 preview.html，方便验收抽帧
 
 [network]
 # proxy = "http://127.0.0.1:7890"   # YouTube 直连不通时使用

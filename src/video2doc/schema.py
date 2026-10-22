@@ -118,3 +118,103 @@ class Job(BaseModel):
     config_hash: str = ""
     source: SourceInfo | None = None
     stages: dict[str, StageRecord] = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------- 画面分析
+
+
+class FrameCurvePoint(BaseModel):
+    """信息密度曲线上的一个点，用于调参与 debug 页面。"""
+
+    t: float
+    edge: float
+    skin: float
+    diff: float
+
+
+class FrameCandidate(BaseModel):
+    index: int
+    time: float
+    path: str
+    shot_start: float
+    shot_end: float
+    kind: str = "screen"
+    score: float = 0.0
+    edge: float = 0.0
+    skin: float = 0.0
+    sharpness: float = 0.0
+    hash: str = ""
+
+
+class FrameSelection(BaseModel):
+    strategy: str = "info-density"
+    interval: float = 1.0
+    sampled: int = 0
+    shots: int = 0
+    duration: float = 0.0
+    frames: list[FrameCandidate] = Field(default_factory=list)
+    curve: list[FrameCurvePoint] = Field(default_factory=list)
+
+    def summary(self) -> str:
+        return f"采样 {self.sampled} 帧 / {self.shots} 个镜头 → 选中 {len(self.frames)} 张"
+
+
+# ------------------------------------------------------------------- OCR
+
+
+class TextBlock(BaseModel):
+    text: str
+    confidence: float = 0.0
+    box: list[float] = Field(default_factory=list)  # x0, y0, x1, y1
+
+
+class FrameText(BaseModel):
+    index: int
+    text: str = ""
+    blocks: list[TextBlock] = Field(default_factory=list)
+    char_count: int = 0
+    mean_confidence: float | None = None
+
+
+class OCRResult(BaseModel):
+    provider: str = ""
+    language: str = "ch"
+    frames: list[FrameText] = Field(default_factory=list)
+
+    @property
+    def total_chars(self) -> int:
+        return sum(frame.char_count for frame in self.frames)
+
+    def summary(self) -> str:
+        with_text = sum(1 for frame in self.frames if frame.char_count > 0)
+        return f"{with_text}/{len(self.frames)} 张有文字 · 共 {self.total_chars} 字"
+
+
+# ---------------------------------------------------------------- 图文对齐
+
+
+class VisualMoment(BaseModel):
+    """一张图 + 它覆盖的时间窗 + 这段窗口里的画面文字与口播内容。"""
+
+    index: int
+    image: str
+    time: float
+    start: float
+    end: float
+    kind: str = "screen"
+    score: float = 0.0
+    ocr_text: str = ""
+    spoken_text: str = ""
+    utterances: int = 0
+    extended: bool = False
+
+
+class Alignment(BaseModel):
+    duration: float = 0.0
+    moments: list[VisualMoment] = Field(default_factory=list)
+    coverage: float = 0.0
+    gaps: list[list[float]] = Field(default_factory=list)
+    debug_html: str | None = None
+
+    def summary(self) -> str:
+        return f"{len(self.moments)} 个画面 · 覆盖 {self.coverage:.0%}"

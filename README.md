@@ -4,9 +4,9 @@
 
 输入一条 B 站 / YouTube 链接或本地视频，输出一份可以直接发布的学习笔记：结构化的章节、可跳回原片的时间戳、关键画面截图。
 
-> **项目状态：M1（文本层已打通）**
-> 当前可用：视频下载 → 音轨抽取 → 字幕复用 / 语音识别 → 可选的术语校正 → 带时间戳的文本。
-> 正在做：M2 抽帧 + OCR，M3 LLM 写作 + 单页 HTML。
+> **项目状态：M2（文本层 + 画面层已打通）**
+> 当前可用：视频下载 → 音轨抽取 → 字幕复用 / 语音识别 → 可选的术语校正 → 抽帧 → 画面文字识别 → 图文对齐，外加一个用来验收抽帧质量的 `preview.html`。
+> 正在做：M3 语义分段 + LLM 写作 + 单页 HTML。
 
 ---
 
@@ -22,10 +22,10 @@ video2doc 把这件事拆成一条**可缓存、可断点续跑的流水线**，
   ├─ audio       抽 16kHz 单声道音轨               ✅ M1
   ├─ transcript  字幕优先，否则语音识别            ✅ M1
   ├─ correct     术语/错别字校正（可选）           ✅ M1
-  ├─ segment     语义分段 + 提问/回答/例题标注      ⏳ M2
-  ├─ frames      场景检测 + 信息量打分 + 去重      ⏳ M2
-  ├─ ocr         提取画面文字与版面                ⏳ M2
-  ├─ align       段落 ↔ 关键帧对齐                 ⏳ M2
+  ├─ frames      场景检测 + 信息量打分 + 去重      ✅ M2
+  ├─ ocr         提取画面文字                      ✅ M2
+  ├─ align       镜头 ↔ 口播对齐 + 调试图          ✅ M2
+  ├─ segment     语义分段 + 提问/回答/例题标注      ⏳ M3
   ├─ write       LLM 逐节写作                      ⏳ M3
   ├─ critique    覆盖率 / 一致性检查 → 定向重写    ⏳ M3
   └─ render      单文件 HTML                       ⏳ M3
@@ -40,10 +40,10 @@ video2doc 把这件事拆成一条**可缓存、可断点续跑的流水线**，
 需要 **Python 3.11+** 和 **ffmpeg**（`ffmpeg`、`ffprobe` 都要在 PATH 里）。
 
 ```bash
-# 本地语音识别（离线、免费，推荐）
-pip install -e ".[local]"
+# 本地语音识别 + 画面文字识别（离线、免费，推荐）
+pip install -e ".[local,ocr]"
 
-# 或者只用云端 ASR，不装 torch
+# 或者只用云端 ASR / 不要 OCR，不装 torch
 pip install -e "."
 ```
 
@@ -75,7 +75,10 @@ v2doc run "https://www.bilibili.com/video/BVxxxxxxxxx"
 # 3. 看转写结果
 v2doc preview output/BVxxxxxxxxx
 
-# 4. 导成纯文本，方便自己丢给别的工具
+# 4. 看抽帧结果（时间、类型、每张图的文字）
+v2doc frames output/BVxxxxxxxxx --open
+
+# 5. 导成纯文本，方便自己丢给别的工具
 v2doc preview output/BVxxxxxxxxx --export notes.txt
 ```
 
@@ -84,11 +87,16 @@ v2doc preview output/BVxxxxxxxxx --export notes.txt
 ```
 output/BVxxxxxxxxx/
 ├─ job.json              # 任务状态、配置快照、每步指纹
+├─ preview.html          # 抽帧 / OCR / 对齐的调试图
 ├─ media/                # 原视频、音频、字幕
+├─ frames/               # 选中的原始画面（jpg）
 └─ stages/
    ├─ ingest.json
    ├─ audio.json
-   └─ transcript.json    # 带时间戳的句子
+   ├─ transcript.json    # 带时间戳的句子
+   ├─ frames.json        # 选帧结果 + 信息密度曲线
+   ├─ ocr.json           # 每张图的文字块
+   └─ align.json         # (图, 画面文字, 这段口播)
 ```
 
 ---
@@ -147,7 +155,30 @@ api_key_env = "OPENAI_API_KEY"
 $env:OPENAI_API_KEY = "sk-..."
 ```
 
-> 注意：配图对齐依赖**时间戳**。部分兼容服务只返回纯文本，那样后续 M2 的图文对齐会退化，`v2doc` 会在日志里警告。
+> 注意：配图对齐依赖**时间戳**。部分兼容服务只返回纯文本，那样后续的图文对齐会退化，`v2doc` 会在日志里警告。
+
+### 抽帧与 OCR
+
+抽帧不追求「每秒一张」，而是找**信息量最大且值得配图**的画面：
+
+```toml
+[frames]
+strategy = "info-density"   # uniform 就是均匀抽，用来做对比
+max_frames = 40             # 一条 30~60 分钟的视频够用了
+min_gap_sec = 8             # 两张图至少隔 8 秒，避免同一页 PPT 截三张
+change_threshold = 0.10     # 相邻帧差异超过 10% 就算换镜头
+hash_threshold = 12         # 白底 PPT 换页时靠感知哈希补刀
+min_shot_score = 0.04       # 低于这个分数基本是纯人脸口播，不配图
+coverage_buckets = 8        # 把时间轴切 8 段，每段至少留一张
+
+[ocr]
+provider = "auto"           # auto | rapidocr | none
+min_confidence = 0.5        # 低于这个置信度的文字块丢弃
+```
+
+选中哪些帧，看 `<任务目录>/preview.html`：上面是信息密度曲线，下面是每张图的 OCR 文字和这段时间的口播。如果某段该有图却没有，通常是 `min_shot_score` 太高或者采样太粗。
+
+OCR 默认用 `rapidocr-onnxruntime`（PP-OCR 模型的 ONNX 版）：不用装 paddlepaddle，Windows 上装得动，完全离线。没装也不会让流水线失败，只是 `align` 阶段少一维画面文字。
 
 ### 网络
 
@@ -177,15 +208,19 @@ cookies_from_browser = "chrome"
 
 **每个阶段的产物都是可校验的 JSON。** 用 pydantic 建模，上游改字段下游立刻报错，而不是默默算出垃圾。
 
-**provider 用注册表，不写死在代码里。** 加一个新 ASR 服务 = 写一个类 + 一行 `@register`。
+**provider 用注册表，不写死在代码里。** 加一个新 ASR / OCR 服务 = 写一个类 + 一行 `@register`。
+
+**抽帧不用人脸检测，用边缘密度 + 肤色占比。** 教学视频需要区分的是「PPT / 代码 / 白板」和「人脸口播」。文字画面的高对比笔画会拉高边缘密度，人脸则是低频渐变；再加一个 YCbCr 肤色占比做否定判断就够了。这样不用为了一个 Haar 级联多背 60MB 的 OpenCV。选完帧再回原视频抽原图，避免为几千帧小图付全分辨率的磁盘和 OCR 成本。
+
+**OCR 只跑选中的 40 张，而不是全片。** 一小时的视频逐帧 OCR 要几十分钟，收益却集中在那几十张稳定画面上。
 
 ---
 
 ## 路线图
 
 - [x] **M1** 下载 / 音轨 / 字幕 / 语音识别 / 术语校正
-- [ ] **M2** 抽帧（场景检测 + 信息密度打分）、OCR、段落与帧对齐
-- [ ] **M3** LLM 分段打标与写作、质检重写、单文件 HTML
+- [x] **M2** 抽帧（场景检测 + 信息密度打分）、画面文字识别、镜头与口播对齐、调试图
+- [ ] **M3** LLM 语义分段与写作、质检重写、单文件 HTML
 - [ ] **M4** 人工校对界面、批量处理
 - [ ] **M5** 更多 ASR（通义听悟 / FunASR）、说话人分离、模板系统
 
@@ -230,7 +265,9 @@ proxy = "http://127.0.0.1:7890"
 
 - 只处理视频的第一 P（多 P 视频会在日志里提示）。
 - 画质低于 720p 时，代码类画面的 OCR 效果会明显下降。
-- 语音识别的时间戳有 ±0.5s 误差，M2 抽帧时会留缓冲。
+- OCR 会把代码符号认错（实测 `outer()` 会变成 `outer0`），M3 写作时会标注「待核对」，不会假装正确。
+- 语音识别的时间戳有 ±0.5s 误差，对齐时留了缓冲。
+- 横屏、有稳定 PPT / 代码画面的教学视频效果最好；全程人脸口播的视频只能拿到口播文字。
 - 没有任何自动发布能力，产出就是文件。
 
 ## 合规

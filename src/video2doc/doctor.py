@@ -152,13 +152,13 @@ def _check_llm(config: Config) -> Check:
 
 
 def _check_ocr() -> Check:
-    modules = [module for module in ("paddleocr", "cv2", "PIL") if _has_module(module)]
+    modules = [module for module in ("rapidocr_onnxruntime", "numpy", "PIL") if _has_module(module)]
     if len(modules) == 3:
-        return Check("OCR（M2 用）", "ok", "已安装")
+        return Check("OCR", "ok", "rapidocr-onnxruntime 已安装（离线）")
     return Check(
-        "OCR（M2 用）",
+        "OCR",
         "warn",
-        f"缺少：{3 - len(modules)} 个模块",
+        f"缺少：{3 - len(modules)} 个模块，抽帧仍可运行，但读不到画面文字",
         'pip install "video2doc[ocr]"',
     )
 

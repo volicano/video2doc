@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import TypeVar
 
 import typer
+from pydantic import BaseModel
 from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
@@ -14,12 +16,13 @@ from rich.table import Table
 from . import __version__
 from .config import EXAMPLE_CONFIG, Config, load_config
 from .doctor import run_doctor
-from .errors import Video2DocError
+from .errors import StageError, Video2DocError
 from .job import derive_job_id, job_dir_for, open_job
 from .pipeline import Pipeline
 from .providers.asr import available_providers
 from .providers.llm import available_providers as llm_available_providers
-from .schema import Job, Transcript
+from .providers.ocr import available_providers as ocr_available_providers
+from .schema import FrameSelection, Job, OCRResult, Transcript
 from .stages import default_stages
 from .utils.common import hms
 
@@ -147,6 +150,17 @@ def providers_command(
         llm_table.add_row(status.name, status.label, mark)
     console.print(llm_table)
 
+    ocr_table = Table(title="OCR providers（画面文字）")
+    ocr_table.add_column("名称", style="bold")
+    ocr_table.add_column("说明")
+    ocr_table.add_column("状态")
+    for status in ocr_available_providers():
+        mark = "[green]可用[/]" if status.ready else f"[yellow]{status.detail}[/]"
+        if status.name == cfg.ocr.provider:
+            mark += " [cyan](当前)[/]"
+        ocr_table.add_row(status.name, status.label, mark)
+    console.print(ocr_table)
+
 
 # ----------------------------------------------------------------- preview
 
@@ -179,6 +193,47 @@ def preview(
         lines = [f"[{hms(u.start)}] {u.text}" for u in transcript.utterances]
         export.write_text("\n".join(lines), encoding="utf-8")
         console.print(f"\n[green]已导出[/] {export}")
+
+
+@app.command()
+def frames(
+    job_dir: Path = typer.Argument(..., help="任务目录"),
+    limit: int = typer.Option(0, "--limit", "-n", help="只显示前 N 张（0 表示全部）"),
+    open_preview: bool = typer.Option(False, "--open", help="用浏览器打开 preview.html"),
+) -> None:
+    """查看抽帧结果（时间、类型、画面文字）。"""
+    selection = _load_stage(job_dir, "frames", FrameSelection)
+    ocr_chars: dict[int, int] = {}
+    try:
+        ocr = _load_stage(job_dir, "ocr", OCRResult)
+        ocr_chars = {frame.index: frame.char_count for frame in ocr.frames}
+    except Video2DocError:
+        pass
+
+    shown = selection.frames[: limit or None]
+    table = Table(title=f"选中画面 · {selection.summary()}")
+    table.add_column("时间", style="cyan", justify="right")
+    table.add_column("类型")
+    table.add_column("文字", justify="right")
+    table.add_column("得分", justify="right")
+    table.add_column("原图", overflow="fold")
+    for frame in shown:
+        table.add_row(
+            hms(frame.time),
+            frame.kind,
+            str(ocr_chars.get(frame.index, 0)),
+            f"{frame.score:.3f}",
+            frame.path,
+        )
+    console.print(table)
+
+    preview = job_dir / "preview.html"
+    if preview.exists():
+        console.print(f"[dim]调试图：[/]{preview}")
+        if open_preview:
+            import webbrowser
+
+            webbrowser.open(preview.resolve().as_uri())
 
 
 # -------------------------------------------------------------------- init
@@ -271,16 +326,15 @@ def _print_summary(job: Job, job_dir: Path) -> None:
     console.print(Panel(table, title="[green]流水线[/]", border_style="green", padding=(0, 1)))
     console.print("[dim]下一步：[/]")
     console.print(f"  v2doc preview {job_dir}")
-    console.print("[dim]提示：[/]M2（抽帧 + OCR）尚未实现，当前只能拿到带时间戳的文本。")
+    preview = job_dir / "preview.html"
+    if preview.exists():
+        console.print(f"  v2doc frames {job_dir} --open   [dim]# 看一眼抽帧和 OCR[/]")
+        console.print(f"  [dim]调试图：{preview}[/]")
+    console.print("[dim]提示：[/]M3（写作 + 单页 HTML）尚未实现，当前产物是文本、图片和对齐数据。")
 
 
 def _load_transcript(job_dir: Path) -> Transcript:
-    job_path = job_dir / "job.json"
-    if not job_path.exists():
-        console.print(f"[red]找不到任务文件：{job_path}[/]")
-        raise typer.Exit(1)
-
-    job = Job.model_validate_json(job_path.read_text(encoding="utf-8"))
+    job = _read_job(job_dir)
     record = None
     for name in ("correct", "transcript"):
         candidate = job.stages.get(name)
@@ -296,6 +350,28 @@ def _load_transcript(job_dir: Path) -> Transcript:
         console.print(f"[red]转写文件丢失：{path}[/]")
         raise typer.Exit(1)
     return Transcript.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+_T = TypeVar("_T", bound=BaseModel)
+
+
+def _read_job(job_dir: Path) -> Job:
+    job_path = job_dir / "job.json"
+    if not job_path.exists():
+        console.print(f"[red]找不到任务文件：{job_path}[/]")
+        raise typer.Exit(1)
+    return Job.model_validate_json(job_path.read_text(encoding="utf-8"))
+
+
+def _load_stage(job_dir: Path, name: str, model: type[_T]) -> _T:
+    job = _read_job(job_dir)
+    record = job.stages.get(name)
+    if record is None or record.status != "done" or not record.output:
+        raise StageError(f"还没有 {name} 阶段的产物", hint="先运行 v2doc run。")
+    path = job_dir / record.output
+    if not path.exists():
+        raise StageError(f"产物文件丢失：{path}", hint="加上 --force 重跑。")
+    return model.model_validate_json(path.read_text(encoding="utf-8"))
 
 
 def _ensure_utf8() -> None:

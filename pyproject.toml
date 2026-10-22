@@ -28,6 +28,8 @@ dependencies = [
   "pydantic>=2.6",
   "httpx>=0.27",
   "yt-dlp>=2024.4.9",
+  "numpy>=1.26",
+  "pillow>=10.2",
 ]
 
 [project.optional-dependencies]
@@ -35,8 +37,8 @@ dependencies = [
 local = ["faster-whisper>=1.0.3"]
 # 云端语音识别（OpenAI 及任何兼容 /audio/transcriptions 的服务）
 cloud = ["httpx>=0.27"]
-# 画面文字识别（M2 阶段使用）
-ocr = ["paddleocr>=2.7", "opencv-python-headless>=4.9", "pillow>=10.2"]
+# 画面文字识别（PP-OCR 模型的 ONNX 版，离线、无需 paddlepaddle）
+ocr = ["rapidocr-onnxruntime>=1.3.24"]
 dev = ["pytest>=8", "ruff>=0.4"]
 
 [project.scripts]

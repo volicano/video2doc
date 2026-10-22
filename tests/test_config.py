@@ -39,10 +39,25 @@ max_frames = 12
 
 def test_unknown_key_is_reported(tmp_path: Path) -> None:
     path = tmp_path / "video2doc.toml"
-    path.write_text("[asr]\nprovder = \"openai\"\n", encoding="utf-8")
+    path.write_text('[asr]\nprovder = "openai"\n', encoding="utf-8")
     with pytest.raises(ConfigError) as excinfo:
         load_config(path)
     assert "asr.provder" in str(excinfo.value)
+
+
+def test_utf8_bom_is_accepted(tmp_path: Path) -> None:
+    # Windows 记事本保存的 UTF-8 默认带 BOM，不该因此报「语法错误」
+    path = tmp_path / "video2doc.toml"
+    path.write_bytes(b"\xef\xbb\xbf[frames]\nmax_frames = 7\n")
+    assert load_config(path).frames.max_frames == 7
+
+
+def test_non_utf8_config_is_reported(tmp_path: Path) -> None:
+    path = tmp_path / "video2doc.toml"
+    path.write_bytes("# 中文注释\n[frames]\nmax_frames = 7\n".encode("gbk"))
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(path)
+    assert "UTF-8" in str(excinfo.value)
 
 
 def test_missing_explicit_config(tmp_path: Path) -> None:
