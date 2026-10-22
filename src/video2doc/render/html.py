@@ -264,24 +264,42 @@ def _body_html(
     link: str | None,
     config: RenderConfig,
 ) -> str:
-    # 正文里的 ## 属于小节，整体降一级，页面层级才不会乱
-    markdown = shift_headings(section.markdown, 1)
-    body = _MD.render(markdown)
+    return render_fragment(
+        section.markdown,
+        section.images,
+        job_dir=job_dir,
+        link=link,
+        config=config,
+        title=section.title,
+    )
 
-    for ref in section.images:
-        figure = _figure_html(ref, section, job_dir, link, config)
+
+def render_fragment(
+    markdown: str,
+    refs: list[ImageRef],
+    *,
+    job_dir: Path,
+    link: str | None,
+    config: RenderConfig,
+    title: str = "",
+) -> str:
+    """渲染一小段正文（含 `[[img:N]]` 占位符）。写正文和校对预览共用。"""
+    # 正文里的 ## 属于小节，整体降一级，页面层级才不会乱
+    body = _MD.render(shift_headings(markdown, 1))
+
+    for ref in refs:
+        figure = _figure_html(ref, title, job_dir, link, config)
         token = f"[[img:{ref.id}]]"
         body = body.replace(f"<p>{token}</p>", figure)
         body = body.replace(token, figure)
 
     # 越界编号和模型漏删的占位符一律清掉，别让它们出现在成品里
-    body = IMG_RE.sub("", body)
-    return body.strip()
+    return IMG_RE.sub("", body).strip()
 
 
 def _figure_html(
     ref: ImageRef,
-    section: WrittenSection,
+    title: str,
     job_dir: Path,
     link: str | None,
     config: RenderConfig,
@@ -295,7 +313,7 @@ def _figure_html(
         )
     caption = _clean_caption(ref.caption) if config.image_captions else ""
     note = f'<span class="note">画面文字：{html.escape(caption)}</span>' if caption else ""
-    alt = html.escape(f"{section.title} 画面 {hms(ref.time)}")
+    alt = html.escape(f"{title} 画面 {hms(ref.time)}")
     return (
         f'<figure>\n<img src="{html.escape(src, quote=True)}" alt="{alt}" loading="lazy">\n'
         f'<figcaption><span class="ts">{stamp}</span>{note}</figcaption>\n</figure>'

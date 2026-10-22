@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>校对 · video2doc</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="dot"></span>video2doc <span class="muted">校对</span></div>
+  <input id="doc-title" class="doc-title" placeholder="教程标题" spellcheck="false" aria-label="教程标题">
+  <div class="top-actions">
+    <span id="status" class="status"></span>
+    <a id="tutorial-link" class="btn ghost" target="_blank" rel="noreferrer" hidden>打开成品 ↗</a>
+    <button id="save" class="btn primary" type="button">保存并渲染 <kbd>Ctrl S</kbd></button>
+  </div>
+</header>
+
+<div id="banner" class="banner" hidden>
+  <div id="banner-body"></div>
+  <button id="banner-close" class="banner-close" type="button" aria-label="关闭">✕</button>
+</div>
+
+<main class="layout">
+  <aside class="pane sections">
+    <div class="pane-head">章节 <span id="section-count" class="muted"></span></div>
+    <ol id="section-list" class="section-list"></ol>
+    <div class="pane-foot">
+      <span id="usage" class="muted"></span>
+      <span class="tiny">✓ = 有人工修改</span>
+    </div>
+  </aside>
+
+  <section class="pane editor">
+    <div class="editor-head">
+      <input id="section-title" class="section-title" placeholder="本节标题" spellcheck="false" aria-label="本节标题">
+      <div class="editor-meta">
+        <span id="section-time" class="muted"></span>
+        <span id="section-chars" class="muted"></span>
+        <label class="switch"><input type="checkbox" id="preview-toggle"> 预览</label>
+      </div>
+    </div>
+    <textarea id="markdown" class="markdown" spellcheck="false" placeholder="正文……&#10;&#10;图片占位符写成 [[img:1]]，编号对应右侧画面顺序。"></textarea>
+    <div id="preview" class="preview" hidden></div>
+    <div class="rewrite-bar">
+      <input id="hint" class="hint" placeholder="给这一节的额外要求（可选），例如：重点是任务接管" spellcheck="false" aria-label="重写提示">
+      <button id="rewrite" class="btn ghost" type="button">AI 重写本节</button>
+    </div>
+  </section>
+
+  <aside class="pane images">
+    <div class="pane-head">本节画面 <span id="image-count" class="muted"></span></div>
+    <div id="thumbs" class="thumbs"></div>
+    <div class="tiny hint-line">↑ ↓ 会改变正文里 [[img:N]] 指向的图</div>
+    <details class="pool-wrap">
+      <summary>从其他章节借用画面</summary>
+      <div id="pool" class="pool"></div>
+    </details>
+    <div class="intro-wrap">
+      <div class="pane-head">导语</div>
+      <textarea id="intro" class="intro" spellcheck="false" placeholder="教程导语……"></textarea>
+    </div>
+  </aside>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

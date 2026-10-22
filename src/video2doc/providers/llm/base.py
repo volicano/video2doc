@@ -33,6 +33,13 @@ def usage_snapshot() -> UsageStats:
     return USAGE.model_copy()
 
 
+def fold_usage(target: UsageStats) -> None:
+    """把本次进程累计的用量并入任务级 `target`（多次保存不会重复计）。"""
+    target.calls += USAGE.calls
+    target.prompt_tokens += USAGE.prompt_tokens
+    target.completion_tokens += USAGE.completion_tokens
+
+
 class LLMProvider(ABC):
     name: str = ""
     label: str = ""

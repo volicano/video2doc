@@ -4,9 +4,9 @@
 
 输入一条 B 站 / YouTube 链接或本地视频，输出一份可以直接发布的学习笔记：结构化的章节、可跳回原片的时间戳、关键画面截图。
 
-> **项目状态：M4（批量处理与人工改稿已可用）**
-> 当前可用：视频下载 → 音轨抽取 → 字幕复用 / 语音识别 → 可选的术语校正 → 抽帧 → 画面文字识别 → 图文对齐 → LLM 语义分段 → 逐节写作 → 质检 → **单页 HTML 教程**；批量跑批、单节重写、人工覆盖层与不调模型的重新渲染也已就绪。
-> 下一步：本地校对界面（M4.3）。
+> **项目状态：M4 完成（批量处理、人工改稿、本地校对界面均已可用）**
+> 当前可用：视频下载 → 音轨抽取 → 字幕复用 / 语音识别 → 可选的术语校正 → 抽帧 → 画面文字识别 → 图文对齐 → LLM 语义分段 → 逐节写作 → 质检 → **单页 HTML 教程**；批量跑批、单节重写、人工覆盖层、不调模型的重新渲染，以及浏览器里的可视化校对（`v2doc review`）也已就绪。
+> 下一步：更多 ASR、说话人分离与模板系统（M5）。
 >
 > 📖 **完整的安装、配置、命令与排错说明见 [docs/使用手册.md](docs/使用手册.md)。**
 
@@ -94,11 +94,14 @@ v2doc rewrite output/BVxxxxxxxxx --section 4 --hint "这节重点是任务接管
 
 # 9. 手改 overrides.json 后重新出 HTML（不调用模型）
 v2doc render output/BVxxxxxxxxx
+
+# 10. 在浏览器里可视化校对：改标题 / 正文 / 配图，保存即重新渲染
+v2doc review output/BVxxxxxxxxx
 ```
 
 重复执行同一条命令会自动续跑；想强制重来加 `--force`，想只重跑某一步加 `--from audio`，只重写教程加 `--from write`。
 
-`tutorial.html` 里想改标题、正文或配图，不用重跑模型：在任务目录写 `overrides.json`，然后 `v2doc render` 即可（详见[使用手册](docs/使用手册.md#128-手工修改成稿overridesjson)）。
+`tutorial.html` 里想改标题、正文或配图，不用重跑模型。推荐直接用 `v2doc review` 打开本地校对界面（只监听 `127.0.0.1`，纯离线），保存时写 `overrides.json` 并自动重新渲染；也可以手写 `overrides.json` 后执行 `v2doc render`（详见[使用手册](docs/使用手册.md#128-手工修改成稿overridesjson)）。
 
 ```
 output/BVxxxxxxxxx/
@@ -295,10 +298,10 @@ cookies_from_browser = "chrome"
 - [x] **M1** 下载 / 音轨 / 字幕 / 语音识别 / 术语校正
 - [x] **M2** 抽帧（场景检测 + 信息密度打分）、画面文字识别、镜头与口播对齐、调试图
 - [x] **M3** LLM 语义分段与逐节写作、确定性质检、单文件 HTML + Markdown 导出
-- [ ] **M4** 人工校对与批量处理
+- [x] **M4** 人工校对与批量处理
   - [x] 批量处理（`v2doc batch`）、任务状态（`v2doc status`）、token 用量统计
   - [x] 单节重跑（`v2doc rewrite`）与人工覆盖层（`overrides.json` + `v2doc render`）
-  - [ ] 本地校对界面（`v2doc review`）
+  - [x] 本地校对界面（`v2doc review`）：章节 / 正文 / 配图可视化编辑，保存即重新渲染
 - [ ] **M5** 更多 ASR（通义听悟 / FunASR）、说话人分离、模板系统
 
 ---

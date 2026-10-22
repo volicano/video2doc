@@ -21,7 +21,7 @@ from rich.status import Status
 from .config import Config
 from .errors import StageError, Video2DocError
 from .job import save_job
-from .providers.llm.base import reset_usage, usage_snapshot
+from .providers.llm.base import fold_usage, reset_usage
 from .schema import Job, StageRecord, UsageStats
 from .utils.common import fingerprint, now_iso
 
@@ -217,11 +217,8 @@ class Pipeline:
 
     def _save(self) -> None:
         # 用量按任务累计：本次进程的调用累加到上次的基数上
-        run = usage_snapshot()
         usage = self._usage_base.model_copy()
-        usage.calls += run.calls
-        usage.prompt_tokens += run.prompt_tokens
-        usage.completion_tokens += run.completion_tokens
+        fold_usage(usage)
         self.job.usage = usage
         save_job(self.job, self.job_dir)
 
