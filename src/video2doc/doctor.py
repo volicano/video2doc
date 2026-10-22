@@ -139,15 +139,16 @@ def _check_asr(config: Config) -> list[Check]:
 
 
 def _check_llm(config: Config) -> Check:
-    key = os.environ.get(config.llm.api_key_env)
     detail = f"{config.llm.model} @ {config.llm.base_url}"
-    if key:
+    if not config.llm.api_key_env:
+        return Check("LLM", "ok", f"{detail}（无密钥模式）")
+    if os.environ.get(config.llm.api_key_env):
         return Check("LLM", "ok", detail)
     return Check(
         "LLM 密钥",
         "warn",
         f"未设置 {config.llm.api_key_env}",
-        "术语校正（asr.correct_with_llm）和 M3 写作会用到",
+        "写作（write）会用到；本地模型可把 api_key_env 设为空字符串",
     )
 
 

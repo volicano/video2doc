@@ -14,6 +14,19 @@ def test_defaults() -> None:
     assert config.asr.language == "zh"
     assert config.video.prefer_subtitles is True
     assert config.render.format == "html-single"
+    assert config.write.enabled is True
+    assert config.write.max_sections == 12
+
+
+def test_example_config_is_valid(tmp_path: Path) -> None:
+    from video2doc.config import EXAMPLE_CONFIG
+
+    path = tmp_path / "video2doc.toml"
+    path.write_text(EXAMPLE_CONFIG, encoding="utf-8")
+    config = load_config(path)
+    assert config.write.enabled is True
+    assert config.render.show_toc is True
+    assert config.llm.max_tokens >= 1024
 
 
 def test_load_toml_overrides(tmp_path: Path) -> None:

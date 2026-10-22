@@ -218,3 +218,105 @@ class Alignment(BaseModel):
 
     def summary(self) -> str:
         return f"{len(self.moments)} 个画面 · 覆盖 {self.coverage:.0%}"
+
+
+# ------------------------------------------------------------------ 写作
+
+
+class Section(BaseModel):
+    """一个语义段落。边界存的是句子编号，时间由代码换算，模型碰不到时间戳。"""
+
+    index: int
+    title: str
+    kind: str = "concept"
+    start: float
+    end: float
+    start_index: int
+    end_index: int
+    utterances: int = 0
+
+
+class Segmentation(BaseModel):
+    strategy: str = "llm"
+    model: str = ""
+    chunks: int = 0
+    duration: float = 0.0
+    sections: list[Section] = Field(default_factory=list)
+
+    def summary(self) -> str:
+        if not self.sections:
+            return "没有分出新章节"
+        average = (self.duration / len(self.sections) / 60) if self.duration else 0.0
+        return f"{len(self.sections)} 节 · 平均 {average:.1f} 分钟"
+
+
+class ImageRef(BaseModel):
+    id: int
+    time: float
+    image: str
+    kind: str = "slide"
+    caption: str = ""
+
+
+class WrittenSection(BaseModel):
+    index: int
+    title: str
+    kind: str = "concept"
+    start: float
+    end: float
+    markdown: str = ""
+    summary: str = ""
+    images: list[ImageRef] = Field(default_factory=list)
+    chars: int = 0
+    rewritten: bool = False
+
+
+class Document(BaseModel):
+    title: str
+    intro: str = ""
+    model: str = ""
+    language: str = "zh"
+    duration: float = 0.0
+    sections: list[WrittenSection] = Field(default_factory=list)
+    chars: int = 0
+    images: int = 0
+
+    def summary(self) -> str:
+        return f"{len(self.sections)} 节 · {self.chars} 字 · {self.images} 张图"
+
+
+class Issue(BaseModel):
+    section: int
+    code: str
+    severity: Literal["high", "medium", "low"] = "medium"
+    message: str
+
+
+class Critique(BaseModel):
+    issues: list[Issue] = Field(default_factory=list)
+    coverage: float = 0.0
+    images_used: int = 0
+    images_available: int = 0
+    rewrites: int = 0
+    passed: bool = True
+
+    def summary(self) -> str:
+        if not self.issues:
+            return f"质检通过 · 覆盖 {self.coverage:.0%} · {self.images_used} 张图"
+        high = sum(1 for issue in self.issues if issue.severity == "high")
+        return (
+            f"{len(self.issues)} 条提示（{high} 条需修）· "
+            f"覆盖 {self.coverage:.0%} · 重写 {self.rewrites} 节"
+        )
+
+
+class RenderedDoc(BaseModel):
+    html: str
+    markdown: str = ""
+    title: str = ""
+    size_bytes: int = 0
+    sections: int = 0
+    images: int = 0
+
+    def summary(self) -> str:
+        return f"{self.html} · {self.size_bytes / 1024:.0f} KB · {self.sections} 节"

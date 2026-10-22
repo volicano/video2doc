@@ -236,6 +236,28 @@ def frames(
             webbrowser.open(preview.resolve().as_uri())
 
 
+@app.command("open")
+def open_doc(
+    job_dir: Path = typer.Argument(..., help="任务目录"),
+    markdown: bool = typer.Option(False, "--md", help="打开导出的 tutorial.md"),
+) -> None:
+    """用浏览器打开生成的图文教程。"""
+    target = job_dir / ("tutorial.md" if markdown else "tutorial.html")
+    if not target.exists():
+        preview = job_dir / "preview.html"
+        if not markdown and preview.exists():
+            console.print("[yellow]还没有教程，先打开抽帧调试图。[/]")
+            target = preview
+        else:
+            console.print(f"[red]找不到 {target}[/]\n[dim]先运行 v2doc run 生成教程。[/]")
+            raise typer.Exit(1)
+
+    import webbrowser
+
+    webbrowser.open(target.resolve().as_uri())
+    console.print(f"[green]已打开[/] {target}")
+
+
 # -------------------------------------------------------------------- init
 
 
@@ -324,13 +346,21 @@ def _print_summary(job: Job, job_dir: Path) -> None:
 
     console.print()
     console.print(Panel(table, title="[green]流水线[/]", border_style="green", padding=(0, 1)))
+
+    tutorial = job_dir / "tutorial.html"
     console.print("[dim]下一步：[/]")
+    if tutorial.exists():
+        console.print(f"  v2doc open {job_dir}          [dim]# 打开图文教程[/]")
+        console.print(f"  [dim]教程：{tutorial}[/]")
     console.print(f"  v2doc preview {job_dir}")
     preview = job_dir / "preview.html"
     if preview.exists():
         console.print(f"  v2doc frames {job_dir} --open   [dim]# 看一眼抽帧和 OCR[/]")
         console.print(f"  [dim]调试图：{preview}[/]")
-    console.print("[dim]提示：[/]M3（写作 + 单页 HTML）尚未实现，当前产物是文本、图片和对齐数据。")
+    if not tutorial.exists():
+        console.print(
+            "[dim]提示：[/]需要 LLM 才能生成教程；不想调用模型可设 write.enabled = false。"
+        )
 
 
 def _load_transcript(job_dir: Path) -> Transcript:

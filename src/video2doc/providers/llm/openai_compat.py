@@ -16,6 +16,10 @@ from ...errors import StageError
 from .base import LLMProvider, ProgressFn, register
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
+RETRY_HINT = (
+    "\n\n注意：上一次输出没有形成完整 JSON（可能被长度限制截断）。"
+    "请重新输出合法 JSON，并精简正文长度。"
+)
 
 
 @register
@@ -33,27 +37,31 @@ class OpenAICompatibleLLM(LLMProvider):
     ) -> dict[str, Any]:
         import httpx
 
-        api_key = os.environ.get(self.config.api_key_env, "").strip()
-        if not api_key:
-            raise StageError(
-                f"环境变量 {self.config.api_key_env} 未设置",
-                hint="设置后重试，或关闭 asr.correct_with_llm。",
-            )
+        api_key = ""
+        if self.config.api_key_env:
+            api_key = os.environ.get(self.config.api_key_env, "").strip()
+            if not api_key:
+                raise StageError(
+                    f"环境变量 {self.config.api_key_env} 未设置",
+                    hint="设置后重试；或设 write.enabled = false，只跑转写和抽帧。",
+                )
 
         endpoint = self.config.base_url.rstrip("/") + "/chat/completions"
-        payload = {
-            "model": self.config.model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "temperature": self.config.temperature,
-            "response_format": {"type": "json_object"},
-        }
-        headers = {"Authorization": f"Bearer {api_key}"}
-
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        user_prompt = user
         last_error = ""
+
         for attempt in range(3):
+            payload = {
+                "model": self.config.model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "temperature": self.config.temperature,
+                "max_tokens": self.config.max_tokens,
+                "response_format": {"type": "json_object"},
+            }
             try:
                 response = httpx.post(
                     endpoint,
@@ -80,12 +88,22 @@ class OpenAICompatibleLLM(LLMProvider):
                 )
 
             try:
-                content = response.json()["choices"][0]["message"]["content"]
+                message = response.json()["choices"][0]
+                content = message["message"]["content"]
+                finish = message.get("finish_reason", "")
             except (KeyError, IndexError, ValueError) as exc:
                 raise StageError(
                     f"LLM 响应格式不符合预期：{response.text[:300]}"
                 ) from exc
-            return _extract_json(content)
+
+            try:
+                return _extract_json(content)
+            except StageError:
+                # 被 max_tokens 截断时重试一次，提示模型压缩篇幅
+                if attempt >= 2:
+                    raise
+                user_prompt = user + RETRY_HINT
+                last_error = f"JSON 解析失败（finish_reason={finish or '未知'}）"
 
         raise StageError(f"LLM 请求失败：{last_error}")
 
@@ -102,7 +120,10 @@ def _extract_json(content: str) -> dict[str, Any]:
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise StageError(f"LLM 返回的不是合法 JSON：{content[:300]}") from exc
+        tail = content[-160:].replace("\n", " ")
+        raise StageError(
+            f"LLM 返回的不是合法 JSON（末尾：…{tail}）"
+        ) from exc
     if not isinstance(data, dict):
         raise StageError(f"LLM 返回的 JSON 不是对象：{content[:300]}")
     return data

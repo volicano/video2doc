@@ -73,6 +73,8 @@ class LLMConfig(Section):
     model: str = "deepseek-chat"
     api_key_env: str = "DEEPSEEK_API_KEY"
     temperature: float = 0.3
+    # 单次回答的最大 token；写作阶段一节正文通常 1~2k token，4096 够用
+    max_tokens: int = 4096
     timeout_sec: int = 300
 
 
@@ -100,12 +102,37 @@ class FramesConfig(Section):
     coverage_buckets: int = 8
 
 
+class WriteConfig(Section):
+    # 关掉的话，M2 的文本 / 图片 / 对齐产物照样保留，只是不生成教程
+    enabled: bool = True
+    # auto | zh | en
+    language: str = "auto"
+    # 一条视频最多切几节；超出时把相邻最短的两节合并
+    max_sections: int = 12
+    min_section_sec: float = 60.0
+    # 单节超过这个长度就按停顿再切一刀，避免一节讲 20 分钟
+    max_section_sec: float = 600.0
+    # 分段时每次喂给 LLM 的句子数，长视频会自动分块并带重叠
+    chunk_utterances: int = 260
+    chunk_overlap: int = 20
+    max_images_per_section: int = 4
+    # 单节转写超过这个字数就截断，防止个别超长段落撑爆上下文
+    max_section_chars: int = 6000
+    temperature: float = 0.4
+    # 质检发现严重问题时，让 LLM 针对性地重写那一节（额外花费）
+    review: bool = False
+    max_rewrites: int = 3
+
+
 class RenderConfig(Section):
     format: str = "html-single"
-    theme: str = "light"
+    theme: str = "light"  # light | dark
     embed_images: bool = True
     # 生成 preview.html，用来肉眼检查抽帧和 OCR 选得对不对
     debug_html: bool = True
+    # 教程标题，留空则用视频标题
+    title: str | None = None
+    show_toc: bool = True
 
 
 class NetworkConfig(Section):
@@ -118,6 +145,7 @@ class Config(Section):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     ocr: OCRConfig = Field(default_factory=OCRConfig)
     frames: FramesConfig = Field(default_factory=FramesConfig)
+    write: WriteConfig = Field(default_factory=WriteConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
     network: NetworkConfig = Field(default_factory=NetworkConfig)
 
@@ -214,6 +242,7 @@ provider = "openai-compatible"
 base_url = "https://api.deepseek.com/v1"
 model = "deepseek-chat"
 api_key_env = "DEEPSEEK_API_KEY"
+# max_tokens = 4096            # 单节正文太长被截断时调大
 
 [ocr]
 # 画面文字识别：rapidocr-onnxruntime（离线）；没装会自动跳过
@@ -229,10 +258,26 @@ hash_threshold = 12          # 白底 PPT 换页的感知哈希阈值
 min_shot_score = 0.04        # 低于它基本是纯人脸口播
 coverage_buckets = 8         # 时间轴分几段，保证覆盖
 
+[write]
+# 用 LLM 把转写整理成图文教程；关掉则只保留文本 / 图片 / 对齐数据
+enabled = true
+language = "auto"            # auto | zh | en
+max_sections = 12            # 超出时合并相邻最短的两节
+min_section_sec = 60
+max_section_sec = 600        # 单节太长会按停顿再切一刀
+max_images_per_section = 4
+temperature = 0.4
+# 质检发现严重问题时，让模型针对那一节重写（额外花费）
+review = false
+max_rewrites = 3
+
 [render]
 format = "html-single"
 theme = "light"
+embed_images = true          # 图片 base64 内嵌，产出单个可分享的 HTML
 debug_html = true            # 生成 preview.html，方便验收抽帧
+show_toc = true
+# title = "自定义教程标题"
 
 [network]
 # proxy = "http://127.0.0.1:7890"   # YouTube 直连不通时使用

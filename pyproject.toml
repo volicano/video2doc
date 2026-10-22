@@ -30,6 +30,7 @@ dependencies = [
   "yt-dlp>=2024.4.9",
   "numpy>=1.26",
   "pillow>=10.2",
+  "markdown-it-py>=3",
 ]
 
 [project.optional-dependencies]

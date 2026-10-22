@@ -4,9 +4,9 @@
 
 输入一条 B 站 / YouTube 链接或本地视频，输出一份可以直接发布的学习笔记：结构化的章节、可跳回原片的时间戳、关键画面截图。
 
-> **项目状态：M2（文本层 + 画面层已打通）**
-> 当前可用：视频下载 → 音轨抽取 → 字幕复用 / 语音识别 → 可选的术语校正 → 抽帧 → 画面文字识别 → 图文对齐，外加一个用来验收抽帧质量的 `preview.html`。
-> 正在做：M3 语义分段 + LLM 写作 + 单页 HTML。
+> **项目状态：M3（能出成品了）**
+> 当前可用：视频下载 → 音轨抽取 → 字幕复用 / 语音识别 → 可选的术语校正 → 抽帧 → 画面文字识别 → 图文对齐 → LLM 语义分段 → 逐节写作 → 质检 → **单页 HTML 教程**。
+> 下一步：M4 人工校对与批量处理。
 
 ---
 
@@ -25,10 +25,10 @@ video2doc 把这件事拆成一条**可缓存、可断点续跑的流水线**，
   ├─ frames      场景检测 + 信息量打分 + 去重      ✅ M2
   ├─ ocr         提取画面文字                      ✅ M2
   ├─ align       镜头 ↔ 口播对齐 + 调试图          ✅ M2
-  ├─ segment     语义分段 + 提问/回答/例题标注      ⏳ M3
-  ├─ write       LLM 逐节写作                      ⏳ M3
-  ├─ critique    覆盖率 / 一致性检查 → 定向重写    ⏳ M3
-  └─ render      单文件 HTML                       ⏳ M3
+  ├─ segment     语义分段 + 章节打标               ✅ M3
+  ├─ write       逐节写作，图随文走                ✅ M3
+  ├─ critique    覆盖率 / 配图 / 长度检查 → 重写   ✅ M3
+  └─ render      单文件 HTML + Markdown 导出       ✅ M3
 ```
 
 每一步的产物都落在 `<任务目录>/stages/*.json`，指纹一变才重跑。改了提示词不会重新下载视频，改了模型不会重新抽帧。
@@ -69,34 +69,40 @@ v2doc doctor
 # 1. 生成配置文件（可选，不生成也能跑）
 v2doc init
 
-# 2. 处理一条视频
+# 2. 处理一条视频（需要 LLM 的 API Key，见下文）
 v2doc run "https://www.bilibili.com/video/BVxxxxxxxxx"
 
-# 3. 看转写结果
+# 3. 打开生成的图文教程
+v2doc open output/BVxxxxxxxxx
+
+# 4. 看转写结果
 v2doc preview output/BVxxxxxxxxx
 
-# 4. 看抽帧结果（时间、类型、每张图的文字）
+# 5. 看抽帧结果（时间、类型、每张图的文字）
 v2doc frames output/BVxxxxxxxxx --open
-
-# 5. 导成纯文本，方便自己丢给别的工具
-v2doc preview output/BVxxxxxxxxx --export notes.txt
 ```
 
-重复执行同一条命令会自动续跑；想强制重来加 `--force`，想只重跑某一步加 `--from audio`。
+重复执行同一条命令会自动续跑；想强制重来加 `--force`，想只重跑某一步加 `--from audio`，只重写教程加 `--from write`。
 
 ```
 output/BVxxxxxxxxx/
-├─ job.json              # 任务状态、配置快照、每步指纹
-├─ preview.html          # 抽帧 / OCR / 对齐的调试图
-├─ media/                # 原视频、音频、字幕
-├─ frames/               # 选中的原始画面（jpg）
+├─ tutorial.html          # 最终产物：单文件图文教程（图片已内嵌）
+├─ tutorial.md            # 同一份内容的 Markdown，图片用相对路径
+├─ job.json               # 任务状态、配置快照、每步指纹
+├─ preview.html           # 抽帧 / OCR / 对齐的调试图
+├─ media/                 # 原视频、音频、字幕
+├─ frames/                # 选中的原始画面（jpg）
 └─ stages/
    ├─ ingest.json
    ├─ audio.json
    ├─ transcript.json    # 带时间戳的句子
    ├─ frames.json        # 选帧结果 + 信息密度曲线
    ├─ ocr.json           # 每张图的文字块
-   └─ align.json         # (图, 画面文字, 这段口播)
+   ├─ align.json         # (图, 画面文字, 这段口播)
+   ├─ segment.json       # 章节边界（句子编号 + 标题）
+   ├─ write.json         # 每节 Markdown + 配图映射
+   ├─ critique.json      # 质检结果
+   └─ render.json        # 产物路径与大小
 ```
 
 ---
@@ -180,6 +186,50 @@ min_confidence = 0.5        # 低于这个置信度的文字块丢弃
 
 OCR 默认用 `rapidocr-onnxruntime`（PP-OCR 模型的 ONNX 版）：不用装 paddlepaddle，Windows 上装得动，完全离线。没装也不会让流水线失败，只是 `align` 阶段少一维画面文字。
 
+### 写作与渲染
+
+M3 会把转写发给 LLM（默认 DeepSeek）。分段只让模型回答「从第几句开始、标题是什么」，**时间戳一律由代码按句子编号换算**；写作时把这一节的口播、配图及 OCR 文字一起交给它，并要求只使用材料里的信息。
+
+```toml
+[llm]
+provider = "openai-compatible"
+base_url = "https://api.deepseek.com/v1"
+model = "deepseek-chat"
+api_key_env = "DEEPSEEK_API_KEY"
+max_tokens = 4096          # 单节正文被截断时调大
+
+[write]
+enabled = true
+language = "auto"          # auto | zh | en
+max_sections = 12          # 超出时合并相邻最短的两节
+min_section_sec = 60       # 太短的段落不单独成节
+max_section_sec = 600      # 单节超过 10 分钟就按停顿再切一刀
+max_images_per_section = 4
+review = false             # 质检不过时让模型重写那一节（额外花费）
+# 本地 8k 上下文的模型建议调小下面两项
+# chunk_utterances = 260
+# max_section_chars = 6000
+
+[render]
+theme = "light"            # light | dark
+embed_images = true        # base64 内嵌，产出单个可分享的 HTML
+show_toc = true
+# title = "自定义教程标题"
+```
+
+本地模型（Ollama / LM Studio / vLLM）只要兼容 `/chat/completions`：
+
+```toml
+[llm]
+base_url = "http://127.0.0.1:11434/v1"
+model = "qwen2.5:14b"
+api_key_env = ""           # 空字符串 = 不发 Authorization
+```
+
+不想把转写发到云端就设 `write.enabled = false`：前七个阶段的产物照样保留，只是不生成教程。没配密钥时这四个阶段也会自动跳过并说明原因，不会丢掉已经跑完的下载和识别结果。
+
+`tutorial.html` 是自包含的单文件（CSS、图片都在里面），可以直接发给别人或存档；`tutorial.md` 用相对路径引用 `frames/`，适合继续手工编辑。
+
 ### 网络
 
 ```toml
@@ -214,13 +264,19 @@ cookies_from_browser = "chrome"
 
 **OCR 只跑选中的 40 张，而不是全片。** 一小时的视频逐帧 OCR 要几十分钟，收益却集中在那几十张稳定画面上。
 
+**LLM 永远不碰时间戳。** 分段时给模型的是带全局编号的句子，它只回答「从第 117 句开始，标题是 X」；边界校验、最小时长、过长再切、过多合并全部由代码完成。写作时也不给模型看时间，只给这一节的文本和图片编号，图注和跳转链接在渲染时用原始时间生成。模型编不出对不上的 12:34。
+
+**一张图只归一节。** 图片按时间重叠归给重叠最多的那一节，再按信息量取前 N 张、按时间编号。这样同一张截图不会在全文出现两次，`[[img:3]]` 永远指向正确的那张图。
+
+**质检先跑确定性规则。** 太短、有图没引用、画面有代码却没有代码块、覆盖率不足——这些用规则就能发现，不花钱也不随机。只有用户显式打开 `write.review` 时，才会让模型重写严重出问题的那几节，且重写后长度明显缩水就保留原稿。
+
 ---
 
 ## 路线图
 
 - [x] **M1** 下载 / 音轨 / 字幕 / 语音识别 / 术语校正
 - [x] **M2** 抽帧（场景检测 + 信息密度打分）、画面文字识别、镜头与口播对齐、调试图
-- [ ] **M3** LLM 语义分段与写作、质检重写、单文件 HTML
+- [x] **M3** LLM 语义分段与逐节写作、确定性质检、单文件 HTML + Markdown 导出
 - [ ] **M4** 人工校对界面、批量处理
 - [ ] **M5** 更多 ASR（通义听悟 / FunASR）、说话人分离、模板系统
 
@@ -265,7 +321,9 @@ proxy = "http://127.0.0.1:7890"
 
 - 只处理视频的第一 P（多 P 视频会在日志里提示）。
 - 画质低于 720p 时，代码类画面的 OCR 效果会明显下降。
-- OCR 会把代码符号认错（实测 `outer()` 会变成 `outer0`），M3 写作时会标注「待核对」，不会假装正确。
+- OCR 会把代码符号认错（实测 `outer()` 会变成 `outer0`）。写作提示词要求给代码块加注「代码为画面识别结果，符号可能有误」，但模型偶尔会漏，发布前请对照原片核对代码。
+- 写作质量取决于所用模型。一次 30~60 分钟的视频通常有 8~15 次 LLM 调用；本地小模型能跑通，但结构和文字质量明显不如云端大模型。
+- 本地视频的标题就是文件名，想要好看点用 `[render] title = "..."` 覆盖。
 - 语音识别的时间戳有 ±0.5s 误差，对齐时留了缓冲。
 - 横屏、有稳定 PPT / 代码画面的教学视频效果最好；全程人脸口播的视频只能拿到口播文字。
 - 没有任何自动发布能力，产出就是文件。
