@@ -21,7 +21,8 @@ from rich.status import Status
 from .config import Config
 from .errors import StageError, Video2DocError
 from .job import save_job
-from .schema import Job, StageRecord
+from .providers.llm.base import reset_usage, usage_snapshot
+from .schema import Job, StageRecord, UsageStats
 from .utils.common import fingerprint, now_iso
 
 T = TypeVar("T", bound=BaseModel)
@@ -114,6 +115,7 @@ class Pipeline:
     force: bool = False
     start_at: str | None = None
     _names: list[str] = field(init=False, default_factory=list)
+    _usage_base: UsageStats = field(init=False, default_factory=UsageStats)
 
     def __post_init__(self) -> None:
         self._names = [stage.name for stage in self.stages]
@@ -129,6 +131,8 @@ class Pipeline:
     # ------------------------------------------------------------------ run
 
     def run(self) -> Job:
+        reset_usage()
+        self._usage_base = self.job.usage.model_copy()
         upstream = ""
         start_index = self._names.index(self.start_at) if self.start_at else -1
         total = len(self.stages)
@@ -176,7 +180,7 @@ class Pipeline:
                     started_at=now_iso(),
                     finished_at=now_iso(),
                 )
-                save_job(self.job, self.job_dir)
+                self._save()
                 self.console.print(f"[yellow]–[/] {stage.name:<12} 跳过：{escape(reason)}")
                 continue
 
@@ -197,12 +201,22 @@ class Pipeline:
                 finished_at=now_iso(),
                 elapsed=round(elapsed, 2),
             )
-            save_job(self.job, self.job_dir)
+            self._save()
             self.console.print(f"[green]✓[/] {stage.name:<12} [dim]{escape(summary)}[/]")
 
         return self.job
 
     # -------------------------------------------------------------- helpers
+
+    def _save(self) -> None:
+        # 用量按任务累计：本次进程的调用累加到上次的基数上
+        run = usage_snapshot()
+        usage = self._usage_base.model_copy()
+        usage.calls += run.calls
+        usage.prompt_tokens += run.prompt_tokens
+        usage.completion_tokens += run.completion_tokens
+        self.job.usage = usage
+        save_job(self.job, self.job_dir)
 
     def _execute(self, stage: Stage, ctx: Context, stage_fp: str) -> tuple[BaseModel, float]:
         started = time.perf_counter()
@@ -236,7 +250,7 @@ class Pipeline:
             started_at=now_iso(),
             finished_at=now_iso(),
         )
-        save_job(self.job, self.job_dir)
+        self._save()
 
     def _cache_hit(self, record: StageRecord | None, stage_fp: str) -> bool:
         if record is None or record.status not in ("done", "skipped"):

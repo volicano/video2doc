@@ -13,7 +13,7 @@ import time
 from typing import Any
 
 from ...errors import StageError
-from .base import LLMProvider, ProgressFn, register
+from .base import USAGE, LLMProvider, ProgressFn, register
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 RETRY_HINT = (
@@ -88,13 +88,17 @@ class OpenAICompatibleLLM(LLMProvider):
                 )
 
             try:
-                message = response.json()["choices"][0]
+                data = response.json()
+                message = data["choices"][0]
                 content = message["message"]["content"]
                 finish = message.get("finish_reason", "")
             except (KeyError, IndexError, ValueError) as exc:
                 raise StageError(
                     f"LLM 响应格式不符合预期：{response.text[:300]}"
                 ) from exc
+
+            usage = data.get("usage") or {}
+            USAGE.add(usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
 
             try:
                 return _extract_json(content)

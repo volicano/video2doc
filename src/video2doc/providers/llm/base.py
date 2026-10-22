@@ -14,8 +14,23 @@ from typing import Any
 
 from ...config import LLMConfig
 from ...errors import StageError
+from ...schema import UsageStats
 
 ProgressFn = Callable[[str], None]
+
+# 进程内累计当前任务的 token 用量。CLI 一次只跑一个任务（batch 串行），
+# 所以不需要加锁，pipeline 在每个任务开始时 reset 一次。
+USAGE = UsageStats()
+
+
+def reset_usage() -> None:
+    USAGE.calls = 0
+    USAGE.prompt_tokens = 0
+    USAGE.completion_tokens = 0
+
+
+def usage_snapshot() -> UsageStats:
+    return USAGE.model_copy()
 
 
 class LLMProvider(ABC):

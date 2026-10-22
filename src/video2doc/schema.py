@@ -13,6 +13,31 @@ from pydantic import BaseModel, Field
 SCHEMA_VERSION = 1
 
 
+class UsageStats(BaseModel):
+    """LLM 调用的 token 用量。批量跑的时候用来估成本。"""
+
+    calls: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+    @property
+    def total_tokens(self) -> int:
+        return self.prompt_tokens + self.completion_tokens
+
+    def add(self, prompt: int, completion: int) -> None:
+        self.calls += 1
+        self.prompt_tokens += max(0, int(prompt or 0))
+        self.completion_tokens += max(0, int(completion or 0))
+
+    def summary(self) -> str:
+        if not self.calls:
+            return "未调用"
+        return (
+            f"{self.calls} 次 · 输入 {self.prompt_tokens:,} / "
+            f"输出 {self.completion_tokens:,} tokens"
+        )
+
+
 class SubtitleFile(BaseModel):
     path: str
     language: str
@@ -118,6 +143,7 @@ class Job(BaseModel):
     config_hash: str = ""
     source: SourceInfo | None = None
     stages: dict[str, StageRecord] = Field(default_factory=dict)
+    usage: UsageStats = Field(default_factory=UsageStats)
 
 
 # ---------------------------------------------------------------- 画面分析

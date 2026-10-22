@@ -82,6 +82,12 @@ v2doc preview output/BVxxxxxxxxx
 
 # 5. 看抽帧结果（时间、类型、每张图的文字）
 v2doc frames output/BVxxxxxxxxx --open
+
+# 6. 一次跑很多条（urls.txt 一行一个链接，# 开头是注释）
+v2doc batch --file urls.txt --skip-done
+
+# 7. 看所有任务的状态
+v2doc status
 ```
 
 重复执行同一条命令会自动续跑；想强制重来加 `--force`，想只重跑某一步加 `--from audio`，只重写教程加 `--from write`。
@@ -280,7 +286,10 @@ cookies_from_browser = "chrome"
 - [x] **M1** 下载 / 音轨 / 字幕 / 语音识别 / 术语校正
 - [x] **M2** 抽帧（场景检测 + 信息密度打分）、画面文字识别、镜头与口播对齐、调试图
 - [x] **M3** LLM 语义分段与逐节写作、确定性质检、单文件 HTML + Markdown 导出
-- [ ] **M4** 人工校对界面、批量处理
+- [ ] **M4** 人工校对与批量处理
+  - [x] 批量处理（`v2doc batch`）、任务状态（`v2doc status`）、token 用量统计
+  - [ ] 单节重跑与人工覆盖层（`overrides.json`）
+  - [ ] 本地校对界面（`v2doc review`）
 - [ ] **M5** 更多 ASR（通义听悟 / FunASR）、说话人分离、模板系统
 
 ---

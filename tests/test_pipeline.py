@@ -9,6 +9,7 @@ from rich.console import Console
 from video2doc.config import Config
 from video2doc.errors import StageError
 from video2doc.pipeline import Context, Pipeline, Stage
+from video2doc.providers.llm.base import USAGE
 from video2doc.schema import Job
 from video2doc.utils.common import now_iso
 
@@ -145,3 +146,26 @@ def test_job_is_persisted_between_runs(tmp_path: Path) -> None:
     Pipeline([RecordingStage()], job, tmp_path, Config(), _console()).run()
     reloaded = Job.model_validate_json((tmp_path / "job.json").read_text(encoding="utf-8"))
     assert reloaded.stages["first"].status == "done"
+
+
+class UsageStage(Stage):
+    name = "usage"
+    title = "usage"
+
+    def run(self, ctx: Context) -> BaseModel:
+        USAGE.add(100, 20)
+        return Payload(value="usage")
+
+
+def test_usage_is_accumulated_and_persisted(tmp_path: Path) -> None:
+    job = _job()
+    Pipeline([UsageStage()], job, tmp_path, Config(), _console()).run()
+
+    reloaded = Job.model_validate_json((tmp_path / "job.json").read_text(encoding="utf-8"))
+    assert (reloaded.usage.calls, reloaded.usage.prompt_tokens) == (1, 100)
+
+    # 强制重跑一次：用量是任务累计，不是本次进程用量
+    Pipeline([UsageStage()], job, tmp_path, Config(), _console(), force=True).run()
+    reloaded = Job.model_validate_json((tmp_path / "job.json").read_text(encoding="utf-8"))
+    assert (reloaded.usage.calls, reloaded.usage.prompt_tokens) == (2, 200)
+    assert reloaded.usage.completion_tokens == 40
