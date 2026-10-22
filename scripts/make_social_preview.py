@@ -72,7 +72,7 @@ def linear_background() -> Image.Image:
     draw = ImageDraw.Draw(img)
     for y in range(p(H)):
         t = y / (p(H) - 1)
-        color = tuple(round(a + (b - a) * t) for a, b in zip(BG_TOP, BG_BOTTOM))
+        color = tuple(round(a + (b - a) * t) for a, b in zip(BG_TOP, BG_BOTTOM, strict=True))
         draw.line((0, y, p(W), y), fill=color)
     return img
 
@@ -118,11 +118,25 @@ def add_document(img: Image.Image, d: ImageDraw.ImageDraw) -> None:
 
     for i, color in enumerate(((248, 113, 113), (251, 191, 36), (52, 211, 153))):
         d.ellipse((p(x + 20 + i * 16), p(y + 19), p(x + 28 + i * 16), p(y + 27)), fill=color)
-    d.text((p(x + 82), p(y + 24)), "output/BV1xx411c7mD/tutorial.html", font=font(SANS, 12), fill=DIM, anchor="lm")
+    d.text(
+        (p(x + 82), p(y + 24)),
+        "output/BV1xx411c7mD/tutorial.html",
+        font=font(SANS, 12),
+        fill=DIM,
+        anchor="lm",
+    )
 
     cx = x + 26
-    d.text((p(cx), p(y + 72)), "CHAPTER 03 · 12:34", font=font(SANS_BOLD, 11), fill=ACCENT_DARK, anchor="lt")
-    d.text((p(cx), p(y + 92)), "线程池与任务调度", font=font(CJK, 25), fill=(15, 23, 42), anchor="lt")
+    d.text(
+        (p(cx), p(y + 72)),
+        "CHAPTER 03 · 12:34",
+        font=font(SANS_BOLD, 11),
+        fill=ACCENT_DARK,
+        anchor="lt",
+    )
+    d.text(
+        (p(cx), p(y + 92)), "线程池与任务调度", font=font(CJK, 25), fill=(15, 23, 42), anchor="lt"
+    )
 
     for line_y, line_w in ((y + 138, 330), (y + 154, 280)):
         d.rounded_rectangle(
@@ -133,8 +147,15 @@ def add_document(img: Image.Image, d: ImageDraw.ImageDraw) -> None:
 
     ix, iy, iw, ih = x + 26, y + 182, w - 52, 148
     rounded(d, (p(ix), p(iy), p(ix + iw), p(iy + ih)), 12, (11, 18, 32))
-    d.text((p(ix + 18), p(iy + 16)), "ExecutorService", font=font(MONO, 12), fill=ACCENT, anchor="lt")
-    bars = ((54, 168, (56, 189, 248)), (72, 224, (148, 163, 184)), (90, 132, (251, 191, 36)), (108, 196, (148, 163, 184)))
+    d.text(
+        (p(ix + 18), p(iy + 16)), "ExecutorService", font=font(MONO, 12), fill=ACCENT, anchor="lt"
+    )
+    bars = (
+        (54, 168, (56, 189, 248)),
+        (72, 224, (148, 163, 184)),
+        (90, 132, (251, 191, 36)),
+        (108, 196, (148, 163, 184)),
+    )
     for off, bw, color in bars:
         d.rounded_rectangle(
             (p(ix + 18), p(iy + off), p(ix + 18 + bw), p(iy + off + 7)),
@@ -176,7 +197,9 @@ def add_document(img: Image.Image, d: ImageDraw.ImageDraw) -> None:
     fx, fy, fw, fh = 620, 292, 176, 46
     shadow2 = Image.new("RGBA", img.size, (0, 0, 0, 0))
     sd2 = ImageDraw.Draw(shadow2)
-    sd2.rounded_rectangle((p(fx + 4), p(fy + 10), p(fx + fw + 4), p(fy + fh + 10)), radius=p(23), fill=(0, 0, 0, 120))
+    sd2.rounded_rectangle(
+        (p(fx + 4), p(fy + 10), p(fx + fw + 4), p(fy + fh + 10)), radius=p(23), fill=(0, 0, 0, 120)
+    )
     img.alpha_composite(shadow2.filter(ImageFilter.GaussianBlur(p(12))))
     d.rounded_rectangle(
         (p(fx), p(fy), p(fx + fw), p(fy + fh)),
@@ -220,7 +243,13 @@ def main() -> None:
     vw = text_width(d, "video", title_font)
     d.text((p(76) + vw, p(112)), "2doc", font=title_font, fill=ACCENT, anchor="lt")
 
-    d.text((p(80), p(238)), "把视频，变成可读的教程", font=font(CJK, 33), fill=(226, 232, 240), anchor="lt")
+    d.text(
+        (p(80), p(238)),
+        "把视频，变成可读的教程",
+        font=font(CJK, 33),
+        fill=(226, 232, 240),
+        anchor="lt",
+    )
     d.text(
         (p(80), p(288)),
         "Turn videos into illustrated, timestamped HTML docs",
@@ -242,7 +271,13 @@ def main() -> None:
             outline=(30, 58, 95),
             width=p(1),
         )
-        d.text((p(cx + width / 2), p(390)), label, font=font(CJK, 14), fill=(203, 213, 225), anchor="mm")
+        d.text(
+            (p(cx + width / 2), p(390)),
+            label,
+            font=font(CJK, 14),
+            fill=(203, 213, 225),
+            anchor="mm",
+        )
         cx += width + 10
 
     # 安装命令
@@ -257,9 +292,21 @@ def main() -> None:
         width=p(1),
     )
     d.text((p(98), p(470)), cmd, font=cmd_font, fill=(226, 232, 240), anchor="lm")
-    d.text((p(80 + cmd_w / S + 18), p(470)), "Python 3.11+ · MIT", font=font(SANS, 15), fill=DIM, anchor="lm")
+    d.text(
+        (p(80 + cmd_w / S + 18), p(470)),
+        "Python 3.11+ · MIT",
+        font=font(SANS, 15),
+        fill=DIM,
+        anchor="lm",
+    )
 
-    d.text((p(80), p(560)), "github.com/volicano/video2doc", font=font(SANS, 14), fill=(120, 135, 155), anchor="lt")
+    d.text(
+        (p(80), p(560)),
+        "github.com/volicano/video2doc",
+        font=font(SANS, 14),
+        fill=(120, 135, 155),
+        anchor="lt",
+    )
 
     add_document(img, d)
 
