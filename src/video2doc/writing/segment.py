@@ -18,6 +18,8 @@ from .prompts import SEGMENT_SYSTEM, language_directive, segment_user
 
 KINDS = {"concept", "example", "qa", "summary", "setup", "other"}
 ProgressFn = Callable[[str], None]
+_TITLE_LIMIT = 40
+_TITLE_BREAKS = ("、", "，", "：", "；", "。", ",", ":", ";", ".", " ", "·", "—")
 
 
 @dataclass
@@ -254,9 +256,15 @@ def _to_int(value: Any) -> int | None:
 
 
 def _clean_title(value: Any) -> str:
-    text = str(value or "").strip().strip("\"'「」《》")
-    text = " ".join(text.split())
-    return text[:30]
+    text = " ".join(str(value or "").strip().strip("\"'「」《》").split())
+    if len(text) <= _TITLE_LIMIT:
+        return text
+    # 硬截断会把「Recent Files 与 Calendar」切成「与 C」，宁可短一点也不切词
+    clip = text[:_TITLE_LIMIT]
+    position = max(clip.rfind(sep) for sep in _TITLE_BREAKS)
+    if position >= 12:
+        return clip[:position].rstrip()
+    return clip
 
 
 def _clean_kind(value: Any) -> str:

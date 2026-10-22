@@ -151,7 +151,7 @@ def build_html(
     toc = _toc(document) if config.show_toc and document.sections else ""
     chips = _chips(document, source, critique, link)
     intro = f'<p class="lede">{html.escape(document.intro)}</p>' if document.intro else ""
-    footer = _footer(document, critique)
+    footer = _footer(document, critique, source, page_title)
 
     return f"""<!doctype html>
 <html lang="{html.escape(document.language or "zh")}"{theme_attr}>
@@ -190,6 +190,7 @@ def build_markdown(
     source: SourceInfo | None,
     *,
     title: str | None = None,
+    captions: bool = False,
 ) -> str:
     """导出一份 Markdown：图片用相对路径，方便继续手工编辑。"""
     page_title = title or document.title or "视频教程"
@@ -213,7 +214,7 @@ def build_markdown(
         lines += [f"## {section.title}", ""]
         label = KIND_LABELS.get(section.kind, section.kind)
         lines += [f"> {hms(section.start)} – {hms(section.end)} · {label}", ""]
-        lines += [_markdown_body(section), ""]
+        lines += [_markdown_body(section, captions=captions), ""]
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -221,14 +222,14 @@ def build_markdown(
 # ------------------------------------------------------------------ 组件
 
 
-def _markdown_body(section: WrittenSection) -> str:
+def _markdown_body(section: WrittenSection, *, captions: bool = False) -> str:
     refs = {ref.id: ref for ref in section.images}
 
     def replace(match: re.Match[str]) -> str:
         ref = refs.get(int(match.group(1)))
         if ref is None:
             return ""
-        caption = _clean_caption(ref.caption)
+        caption = _clean_caption(ref.caption) if captions else ""
         suffix = f' "{caption}"' if caption else ""
         return f"![图 {ref.id} · {hms(ref.time)}]({ref.image}{suffix})"
 
@@ -292,7 +293,7 @@ def _figure_html(
             f'<a href="{html.escape(_titled(link, ref.time))}" '
             f'target="_blank" rel="noreferrer">{stamp}</a>'
         )
-    caption = _clean_caption(ref.caption)
+    caption = _clean_caption(ref.caption) if config.image_captions else ""
     note = f'<span class="note">画面文字：{html.escape(caption)}</span>' if caption else ""
     alt = html.escape(f"{section.title} 画面 {hms(ref.time)}")
     return (
@@ -333,13 +334,21 @@ def _chips(
     return "".join(chips)
 
 
-def _footer(document: Document, critique: Critique | None) -> str:
+def _footer(
+    document: Document,
+    critique: Critique | None,
+    source: SourceInfo | None,
+    page_title: str,
+) -> str:
     parts = ["由 video2doc 根据视频转写与画面自动整理"]
     if document.model:
         parts.append(f"模型 {html.escape(document.model)}")
     parts.append(f"生成于 {html.escape(now_iso()[:16].replace('T', ' '))}")
     line = " · ".join(parts)
-    notes = ["画面文字来自 OCR 识别，代码里的符号可能有误，请对照原片核对。"]
+    notes = []
+    if source is not None and source.title and source.title != page_title:
+        notes.append(f"原视频：{source.title}")
+    notes.append("画面文字来自 OCR 识别，代码里的符号可能有误，请对照原片核对。")
     if critique is not None and critique.issues:
         notes.append(f"质检有 {len(critique.issues)} 条提示，覆盖率 {critique.coverage:.0%}。")
     body = "".join(f"<p>{html.escape(note)}</p>" for note in notes)

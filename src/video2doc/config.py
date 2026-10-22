@@ -133,6 +133,8 @@ class RenderConfig(Section):
     # 教程标题，留空则用视频标题
     title: str | None = None
     show_toc: bool = True
+    # 在图片下方显示 OCR 认出来的画面文字。录屏类视频的 OCR 噪声大，默认关闭
+    image_captions: bool = False
 
 
 class NetworkConfig(Section):
@@ -277,6 +279,7 @@ theme = "light"
 embed_images = true          # 图片 base64 内嵌，产出单个可分享的 HTML
 debug_html = true            # 生成 preview.html，方便验收抽帧
 show_toc = true
+image_captions = false       # 图片下方显示 OCR 画面文字（录屏类视频噪声大，默认关）
 # title = "自定义教程标题"
 
 [network]

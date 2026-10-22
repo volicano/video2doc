@@ -14,7 +14,7 @@ from ..writing.critique import critique_document
 class CritiqueStage(Stage):
     name = "critique"
     title = "质量检查"
-    version = 1
+    version = 3
     requires = ("write", "segment", "align")
 
     def params(self, config: Config) -> dict:

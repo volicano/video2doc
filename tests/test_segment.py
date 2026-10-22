@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from video2doc.config import WriteConfig
 from video2doc.schema import Transcript, Utterance
-from video2doc.writing.segment import plan_chunks, segment_transcript
+from video2doc.writing.segment import _clean_title, plan_chunks, segment_transcript
 
 
 class FakeLLM:
@@ -171,6 +171,14 @@ def test_empty_response_falls_back_to_one_section() -> None:
     assert result.sections[0].start_index == 0
     assert result.sections[0].end_index == 9
     assert result.sections[0].title.startswith("第 0 句")
+
+
+def test_long_title_is_cut_at_separator() -> None:
+    title = "Settings Search、Recent Files 与 Calendar、以及每日笔记的设置"
+    assert _clean_title(title) == "Settings Search、Recent Files 与 Calendar"
+    assert _clean_title("短标题") == "短标题"
+    # 没有合适分隔符时才硬截断
+    assert len(_clean_title("x" * 80)) == 40
 
 
 def test_multiple_chunks_keep_global_indices() -> None:

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from ..schema import ImageRef, Section, Utterance, VisualMoment
@@ -12,6 +13,24 @@ from ..utils.common import hms
 
 CAPTION_CHARS = 40
 PROMPT_OCR_CHARS = 400
+# 这些多半是浏览器 / 应用界面的残留文字，当图注只会显得很潦草
+_CAPTION_NOISE = {
+    "bilibili",
+    "youtube",
+    "raw",
+    "tags",
+    "tag",
+    "chrome",
+    "edge",
+    "firefox",
+    "new tab",
+    "untitled",
+    "markdown",
+    "无标题",
+    "新标签页",
+    "标记",
+}
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
 
 @dataclass
@@ -91,12 +110,31 @@ def _select_moments(moments: list[VisualMoment], limit: int) -> list[VisualMomen
 
 
 def caption_for(moment: VisualMoment) -> str:
-    """图注优先用 OCR 的第一行，它通常就是这页 PPT 的标题。"""
-    for line in moment.ocr_text.splitlines():
-        cleaned = line.strip()
-        if len(cleaned) >= 2:
-            return cleaned[:CAPTION_CHARS]
-    return ""
+    """图注取 OCR 里最像「这页标题」的一行，过滤掉浏览器标签页之类的噪音。"""
+    lines = [" ".join(line.split()) for line in moment.ocr_text.splitlines()]
+    lines = [line for line in lines if line]
+    if not lines:
+        return ""
+    best = max(lines, key=_caption_score)
+    if _caption_score(best) <= 0:
+        return ""
+    return best[:CAPTION_CHARS]
+
+
+def _caption_score(text: str) -> float:
+    if len(text) < 3:
+        return -1.0
+    if text.lower().strip(" .-_/|:：") in _CAPTION_NOISE:
+        return -1.0
+    if text.isdigit():
+        return -1.0
+    score = min(len(text), CAPTION_CHARS) / 10.0
+    if _CJK_RE.search(text):
+        score += 1.0
+    elif text.islower():
+        # 「calen」「bilibili」这种全小写英文基本是界面残留
+        score -= 1.5
+    return score
 
 
 def image_digest(moment: VisualMoment) -> str:

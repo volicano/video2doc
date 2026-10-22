@@ -14,7 +14,7 @@ from ..writing.write import write_document
 class WriteStage(Stage):
     name = "write"
     title = "逐节写作"
-    version = 1
+    version = 2
     requires = ("segment", "align")
 
     def params(self, config: Config) -> dict:
@@ -22,7 +22,7 @@ class WriteStage(Stage):
             "enabled": config.write.enabled,
             "write": config.write.model_dump(),
             "llm": config.llm.model_dump(),
-            "prompt_version": 1,
+            "prompt_version": 2,
         }
 
     def skip(self, ctx: Context) -> str | None:

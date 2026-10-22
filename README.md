@@ -214,6 +214,7 @@ review = false             # 质检不过时让模型重写那一节（额外花
 theme = "light"            # light | dark
 embed_images = true        # base64 内嵌，产出单个可分享的 HTML
 show_toc = true
+image_captions = false     # 图注显示 OCR 画面文字；录屏类视频噪声大，默认关
 # title = "自定义教程标题"
 ```
 

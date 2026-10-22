@@ -77,10 +77,10 @@ def write_document(
             )
         )
 
-    intro = _write_intro(sections, provider, title, transcript, language, progress)
+    intro_title, intro = _write_intro(sections, provider, title, transcript, language, progress)
     images = sum(len(section.images) for section in sections)
     return Document(
-        title=title,
+        title=intro_title or title,
         intro=intro,
         model=str(getattr(provider.config, "model", "")),
         language=language,
@@ -143,9 +143,10 @@ def _write_intro(
     transcript: Transcript,
     language: str,
     progress: ProgressFn | None,
-) -> str:
+) -> tuple[str, str]:
+    """返回 (教程标题, 导语)。任何一个失败都退回原标题 / 空导语。"""
     if not sections:
-        return ""
+        return "", ""
     try:
         payload = provider.complete_json(
             INTRO_SYSTEM,
@@ -160,5 +161,7 @@ def _write_intro(
             progress=progress,
         )
     except Exception:  # noqa: BLE001 - 导语是锦上添花，失败不该毁掉整篇
-        return ""
-    return str(payload.get("intro") or "").strip()[:300]
+        return "", ""
+    new_title = " ".join(str(payload.get("title") or "").split())[:40]
+    intro = str(payload.get("intro") or "").strip()[:300]
+    return new_title, intro

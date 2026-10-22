@@ -10,14 +10,15 @@ from video2doc.schema import (
     Utterance,
     VisualMoment,
 )
-from video2doc.writing.materials import assign_moments, build_material
+from video2doc.writing.materials import assign_moments, build_material, caption_for
 from video2doc.writing.write import sanitize_markdown, write_document
 
 
 class FakeLLM:
-    def __init__(self, writer, intro: str = "这是一段导语。") -> None:
+    def __init__(self, writer, intro: str = "这是一段导语。", intro_title: str = "") -> None:
         self.writer = writer
         self.intro = intro
+        self.intro_title = intro_title
         self.calls = 0
         self.images: list[int] = []
         self.config = SimpleNamespace(model="fake")
@@ -25,7 +26,10 @@ class FakeLLM:
     def complete_json(self, system: str, user: str, *, progress=None) -> dict:
         self.calls += 1
         if "导语" in system:
-            return {"intro": self.intro}
+            payload = {"intro": self.intro}
+            if self.intro_title:
+                payload["title"] = self.intro_title
+            return payload
         return self.writer(len(self.images))
 
 
@@ -94,6 +98,28 @@ def test_assign_moments_gives_each_image_to_max_overlap() -> None:
     # 90–110 横跨两节，重叠都是 10s，归给先遇到的那节（索引小）
     assert [item.index for item in buckets[1]] == [1, 2]
     assert [item.index for item in buckets[2]] == [3]
+
+
+def test_caption_filters_browser_noise() -> None:
+    noisy = VisualMoment(
+        index=1,
+        image="frames/a.jpg",
+        time=1.0,
+        start=0.0,
+        end=5.0,
+        ocr_text="bilibili\ncalen\n123\n零基础入门",
+    )
+    assert caption_for(noisy) == "零基础入门"
+
+    junk = VisualMoment(
+        index=2,
+        image="frames/b.jpg",
+        time=1.0,
+        start=0.0,
+        end=5.0,
+        ocr_text="bilibili\ntags\nRaw",
+    )
+    assert caption_for(junk) == ""
 
 
 def test_build_material_caps_and_sorts_images() -> None:
@@ -191,6 +217,23 @@ def test_duplicate_leading_title_is_removed() -> None:
         language="zh",
     )
     assert document.sections[0].markdown.startswith("正文内容")
+
+
+def test_intro_can_replace_the_video_title() -> None:
+    llm = FakeLLM(
+        lambda call: {"summary": "", "markdown": "正文内容 [[img:1]]"},
+        intro_title="Obsidian 8 个插件：从 0 到 1 的笔记系统",
+    )
+    document = write_document(
+        two_sections(),
+        make_transcript(),
+        [],
+        llm,
+        WriteConfig(),
+        title="【Obsidian教程】入门到精通，AI学习办公必备的8个插件，不写代码就能用",
+        language="zh",
+    )
+    assert document.title == "Obsidian 8 个插件：从 0 到 1 的笔记系统"
 
 
 def test_write_document_falls_back_when_model_returns_nothing() -> None:

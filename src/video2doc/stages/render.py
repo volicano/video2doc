@@ -17,7 +17,7 @@ MARKDOWN_NAME = "tutorial.md"
 class RenderStage(Stage):
     name = "render"
     title = "生成单页教程"
-    version = 1
+    version = 2
     requires = ("write", "critique")
 
     def params(self, config: Config) -> dict:
@@ -45,7 +45,9 @@ class RenderStage(Stage):
             config=ctx.config.render,
             title=title,
         )
-        markdown = build_markdown(document, source, title=title)
+        markdown = build_markdown(
+            document, source, title=title, captions=ctx.config.render.image_captions
+        )
 
         html_path = ctx.job_dir / HTML_NAME
         md_path = ctx.job_dir / MARKDOWN_NAME

@@ -130,6 +130,45 @@ def test_code_on_screen_requires_fence() -> None:
     assert any(issue.code == "code_missing" for issue in result.issues)
 
 
+def test_paren_heavy_ui_text_is_not_code() -> None:
+    ref = ImageRef(id=1, time=10.0, image="frames/f01.jpg", kind="slide")
+    markdown = "正文 [[img:1]] " + "说明文字。" * 40
+    document = make_document(markdown=markdown, images=[ref])
+    moment = VisualMoment(
+        index=1,
+        image="frames/f01.jpg",
+        time=10.0,
+        start=0.0,
+        end=40.0,
+        kind="slide",
+        ocr_text="设置 (Settings) (General) (Editor) (Files) (About) (Hotkeys) (Appearance)",
+    )
+    result = check(document, make_segmentation(), make_transcript(), [moment])
+    assert not any(issue.code == "code_missing" for issue in result.issues)
+
+
+def test_symbols_spread_across_images_are_not_code() -> None:
+    refs = [
+        ImageRef(id=index, time=float(index * 10), image=f"frames/f{index:02d}.jpg")
+        for index in range(1, 5)
+    ]
+    document = make_document(markdown="正文 [[img:1]] " + "说明文字。" * 40, images=refs)
+    moments = [
+        VisualMoment(
+            index=index,
+            image=f"frames/f{index:02d}.jpg",
+            time=float(index * 10),
+            start=float(index * 10),
+            end=float(index * 10 + 8),
+            kind="slide",
+            ocr_text="((((( ))))) bb {bb}",
+        )
+        for index in range(1, 5)
+    ]
+    result = check(document, make_segmentation(), make_transcript(), moments)
+    assert not any(issue.code == "code_missing" for issue in result.issues)
+
+
 def test_review_rewrites_only_flagged_sections() -> None:
     document = make_document(markdown="略")
     llm = FakeLLM("## 小节\n" + "补写后的正文内容。" * 20)

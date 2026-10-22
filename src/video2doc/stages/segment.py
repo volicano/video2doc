@@ -14,7 +14,7 @@ from ..writing.segment import segment_transcript
 class SegmentStage(Stage):
     name = "segment"
     title = "语义分段"
-    version = 1
+    version = 2
     requires = ("transcript",)
 
     def params(self, config: Config) -> dict:

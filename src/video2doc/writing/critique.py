@@ -26,9 +26,11 @@ from .write import IMG_RE, sanitize_markdown
 
 ProgressFn = Callable[[str], None]
 CODE_CHARS = "{}();=<>"
+CODE_STRUCT_CHARS = "{}[];="
 MIN_SECTION_CHARS = 40
 MIN_LENGTH_RATIO = 0.2
-CODE_HINT = 8
+CODE_HINT = 10
+CODE_STRUCT_HINT = 4
 
 
 def critique_document(
@@ -173,11 +175,19 @@ def check(
 
 
 def _looks_like_code(section, ocr_by_image: dict[str, str]) -> bool:
-    text = " ".join(ocr_by_image.get(ref.image, "") for ref in section.images)
+    """逐张判断：多张图各带两个括号不该累计成「有代码」。"""
+    return any(
+        _image_looks_like_code(ocr_by_image.get(ref.image, "")) for ref in section.images
+    )
+
+
+def _image_looks_like_code(text: str) -> bool:
     if not text:
         return False
     hits = sum(text.count(char) for char in CODE_CHARS)
-    return hits >= CODE_HINT
+    # 只有括号不够——界面文案里也全是括号；必须出现大括号/方括号/分号/等号这类结构符号
+    struct = sum(text.count(char) for char in CODE_STRUCT_CHARS)
+    return hits >= CODE_HINT and struct >= CODE_STRUCT_HINT
 
 
 def _rewrite(
