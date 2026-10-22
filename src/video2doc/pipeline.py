@@ -94,6 +94,10 @@ class Stage(ABC):
         """影响本阶段结果的所有配置项。加了这个才算进缓存指纹。"""
         return {}
 
+    def local_params(self, job_dir: Path) -> dict[str, Any]:
+        """任务目录里的外部输入（比如人工覆盖层）。同样参与指纹。"""
+        return {}
+
     def skip(self, ctx: Context) -> str | None:
         """返回原因则跳过（例如已有字幕就不用跑 ASR）。"""
         return None
@@ -142,7 +146,10 @@ class Pipeline:
                 {
                     "stage": stage.name,
                     "version": stage.version,
-                    "params": stage.params(self.config),
+                    "params": {
+                        **stage.params(self.config),
+                        **stage.local_params(self.job_dir),
+                    },
                     "source": _source_key(self.job.target),
                     "upstream": upstream,
                 }

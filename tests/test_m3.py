@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -160,6 +161,24 @@ def test_m3_pipeline_writes_tutorial(tmp_path: Path, monkeypatch) -> None:
     Pipeline(stages, job, tmp_path, config, console).run()
     assert len(fake.calls) == before
 
+    # 只改 overrides.json：render 必须重跑，但仍然不调用 LLM
+    (tmp_path / "overrides.json").write_text(
+        json.dumps(
+            {
+                "title": "人工改过的标题",
+                "sections": {"2": {"title": "人工第二节"}},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    job = Pipeline(stages, job, tmp_path, config, console).run()
+
+    assert len(fake.calls) == before
+    html = (tmp_path / "tutorial.html").read_text(encoding="utf-8")
+    assert "人工改过的标题" in html
+    assert "人工第二节" in html
+
 
 def test_stages_skip_when_api_key_is_missing(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("V2DOC_NO_SUCH_KEY", raising=False)
@@ -170,6 +189,10 @@ def test_stages_skip_when_api_key_is_missing(tmp_path: Path, monkeypatch) -> Non
 
     job = Pipeline(stages, job, tmp_path, config, console).run()
 
-    for name in ("segment", "write", "critique", "render"):
+    for name in ("segment", "write", "critique"):
         assert job.stages[name].status == "skipped"
         assert "V2DOC_NO_SUCH_KEY" in job.stages[name].summary
+
+    # render 不调用模型：没有文档时跳过，但不会因为缺密钥而跳过
+    assert job.stages["render"].status == "skipped"
+    assert "可渲染" in job.stages["render"].summary

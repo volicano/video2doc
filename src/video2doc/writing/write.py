@@ -6,7 +6,16 @@ import re
 from collections.abc import Callable
 
 from ..config import WriteConfig
-from ..schema import Document, ImageRef, Segmentation, Transcript, VisualMoment, WrittenSection
+from ..schema import (
+    Document,
+    ImageRef,
+    Section,
+    Segmentation,
+    Transcript,
+    Utterance,
+    VisualMoment,
+    WrittenSection,
+)
 from ..utils.common import hms
 from ..utils.markdown import demote_h1, drop_leading_title
 from .materials import assign_moments, build_material, count_chars
@@ -15,6 +24,74 @@ from .prompts import INTRO_SYSTEM, WRITE_SYSTEM, intro_user, write_user
 IMG_RE = re.compile(r"\[\[img:(\d+)\]\]", re.IGNORECASE)
 ProgressFn = Callable[[str], None]
 RETRY_SUFFIX = "\n\n注意：上一次没有返回 markdown 正文。这次必须返回合法 JSON，且 markdown 不为空。"
+TITLE_SUFFIX = (
+    "\n\n另外，用 title 字段给这一节起一个不超过 20 字的标题：要具体，"
+    "不要序号和引号，不要写「这一节」之类的空话。"
+)
+
+
+def write_section(
+    section: Section,
+    utterances: list[Utterance],
+    moments: list[VisualMoment],
+    provider,
+    config: WriteConfig,
+    *,
+    language: str,
+    progress: ProgressFn | None = None,
+    hint: str = "",
+    want_title: bool = False,
+) -> WrittenSection:
+    """写一节。逐节写作和「只重写某一节」共用这一段逻辑。"""
+    material = build_material(
+        section,
+        utterances,
+        moments,
+        max_images=config.max_images_per_section,
+        max_chars=config.max_section_chars,
+    )
+    user = write_user(
+        section_title=section.title,
+        kind=section.kind,
+        start=hms(section.start),
+        end=hms(section.end),
+        images=material.prompt_images,
+        transcript=material.text,
+        language=language,
+    )
+    if hint.strip():
+        user += f"\n\n额外要求（优先满足）：{hint.strip()}"
+    if want_title:
+        user += TITLE_SUFFIX
+
+    payload = provider.complete_json(WRITE_SYSTEM, user, progress=progress)
+    markdown = _payload_markdown(payload)
+    if not markdown:
+        payload = provider.complete_json(WRITE_SYSTEM, user + RETRY_SUFFIX, progress=progress)
+        markdown = _payload_markdown(payload)
+
+    if not markdown:
+        # 宁可给一段可读的原始转写，也不要让整条流水线白跑
+        markdown = _fallback_markdown(material.text, material.refs)
+
+    section_title = section.title
+    proposed = " ".join(str(payload.get("title") or "").split())[:30] if want_title else ""
+    if proposed:
+        section_title = proposed
+
+    markdown = sanitize_markdown(markdown, len(material.refs))
+    markdown = drop_leading_title(markdown, section_title)
+    return WrittenSection(
+        index=section.index,
+        title=section_title,
+        kind=section.kind,
+        start=section.start,
+        end=section.end,
+        markdown=markdown,
+        summary=str(payload.get("summary") or "").strip()[:120],
+        images=material.refs,
+        chars=count_chars(markdown),
+    )
 
 
 def write_document(
@@ -34,46 +111,15 @@ def write_document(
     for order, section in enumerate(segmentation.sections, 1):
         if progress:
             progress(f"写作 {order}/{len(segmentation.sections)} · {section.title}")
-        material = build_material(
-            section,
-            transcript.utterances,
-            buckets.get(section.index, []),
-            max_images=config.max_images_per_section,
-            max_chars=config.max_section_chars,
-        )
-        user = write_user(
-            section_title=section.title,
-            kind=section.kind,
-            start=hms(section.start),
-            end=hms(section.end),
-            images=material.prompt_images,
-            transcript=material.text,
-            language=language,
-        )
-
-        payload = provider.complete_json(WRITE_SYSTEM, user, progress=progress)
-        markdown = _payload_markdown(payload)
-        if not markdown:
-            payload = provider.complete_json(WRITE_SYSTEM, user + RETRY_SUFFIX, progress=progress)
-            markdown = _payload_markdown(payload)
-
-        if not markdown:
-            # 宁可给一段可读的原始转写，也不要让整条流水线白跑
-            markdown = _fallback_markdown(material.text, material.refs)
-
-        markdown = sanitize_markdown(markdown, len(material.refs))
-        markdown = drop_leading_title(markdown, section.title)
         sections.append(
-            WrittenSection(
-                index=section.index,
-                title=section.title,
-                kind=section.kind,
-                start=section.start,
-                end=section.end,
-                markdown=markdown,
-                summary=str(payload.get("summary") or "").strip()[:120],
-                images=material.refs,
-                chars=count_chars(markdown),
+            write_section(
+                section,
+                transcript.utterances,
+                buckets.get(section.index, []),
+                provider,
+                config,
+                language=language,
+                progress=progress,
             )
         )
 

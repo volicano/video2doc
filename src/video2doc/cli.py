@@ -18,14 +18,26 @@ from . import __version__
 from .config import EXAMPLE_CONFIG, Config, load_config
 from .doctor import run_doctor
 from .errors import StageError, Video2DocError
-from .job import derive_job_id, job_dir_for, open_job
+from .job import derive_job_id, job_dir_for, open_job, save_job
 from .pipeline import Pipeline
 from .providers.asr import available_providers
 from .providers.llm import available_providers as llm_available_providers
+from .providers.llm.base import reset_usage, usage_snapshot
 from .providers.ocr import available_providers as ocr_available_providers
-from .schema import FrameSelection, Job, OCRResult, Transcript, UsageStats
+from .schema import (
+    Alignment,
+    Document,
+    FrameSelection,
+    Job,
+    OCRResult,
+    Segmentation,
+    Transcript,
+    UsageStats,
+)
 from .stages import default_stages
 from .utils.common import hms
+from .writing import llm_unavailable, make_llm, resolve_language
+from .writing.rewrite import rewrite_section
 
 app = typer.Typer(
     add_completion=False,
@@ -99,6 +111,121 @@ def resume(
 
     _print_header(cfg, job, job_dir, created)
     _run_pipeline(job, job_dir, cfg, force=force, from_stage=from_stage)
+
+
+# -------------------------------------------------------- rewrite / render
+
+
+@app.command()
+def rewrite(
+    job_dir: Path = typer.Argument(..., help="任务目录（包含 job.json）"),
+    section: int = typer.Option(
+        ..., "--section", "-s", min=1, help="要重写的章节号（从 1 开始）"
+    ),
+    hint: str = typer.Option("", "--hint", help="额外写作要求，例如「重点是任务接管」"),
+    config: Path | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
+) -> None:
+    """只重写某一节，然后重跑质检和渲染。其余章节不动。"""
+    try:
+        job = _read_job(job_dir)
+        cfg = load_config(config)
+    except Video2DocError as exc:
+        exc.render(console)
+        raise typer.Exit(1) from None
+
+    reason = llm_unavailable(cfg)
+    if reason:
+        console.print(f"[red]{reason}[/]")
+        raise typer.Exit(1)
+
+    try:
+        segmentation = _load_stage(job_dir, "segment", Segmentation)
+        alignment = _load_stage(job_dir, "align", Alignment)
+        document = _load_stage(job_dir, "write", Document)
+        transcript = _load_transcript(job_dir)
+    except Video2DocError as exc:
+        exc.render(console)
+        raise typer.Exit(1) from None
+
+    old = next((item for item in document.sections if item.index == section), None)
+    if old is not None:
+        console.print(
+            f"[cyan]重写第 {section} 节[/] [dim]{escape(old.title)}（{old.chars} 字）[/]"
+        )
+    if hint.strip():
+        console.print(f"[dim]额外要求：{escape(hint.strip())}[/]")
+
+    provider = make_llm(cfg, cfg.write.temperature)
+    reset_usage()
+    try:
+        with console.status(f"[cyan]正在重写第 {section} 节[/]") as status:
+
+            def progress(message: str) -> None:
+                status.update(f"[cyan]{escape(message)}[/]")
+
+            updated, written = rewrite_section(
+                document,
+                segmentation,
+                transcript,
+                alignment.moments,
+                provider,
+                cfg.write,
+                section_index=section,
+                language=resolve_language(cfg, transcript),
+                hint=hint,
+                progress=progress,
+            )
+    except Video2DocError as exc:
+        console.print()
+        exc.render(console)
+        raise typer.Exit(1) from None
+    finally:
+        # 即使中途失败，已经花掉的 token 也要记账
+        _fold_usage(job)
+        save_job(job, job_dir)
+
+    path = job_dir / "stages" / "write.json"
+    if not path.parent.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(updated.model_dump_json(indent=2), encoding="utf-8")
+
+    record = job.stages.get("write")
+    if record is not None:
+        record.summary = updated.summary()
+    save_job(job, job_dir)
+
+    title_change = f" → {written.title}" if old is None or old.title != written.title else ""
+    console.print(
+        f"[green]✓[/] 第 {section} 节已重写{escape(title_change)} · "
+        f"{written.chars} 字 · {len(written.images)} 张图"
+    )
+    console.print()
+
+    _run_pipeline(job, job_dir, cfg, force=False, from_stage="critique")
+
+
+@app.command()
+def render(
+    job_dir: Path = typer.Argument(..., help="任务目录（包含 job.json）"),
+    config: Path | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
+) -> None:
+    """应用 overrides.json 重新生成教程，不调用模型。"""
+    try:
+        job = _read_job(job_dir)
+        cfg = load_config(config)
+    except Video2DocError as exc:
+        exc.render(console)
+        raise typer.Exit(1) from None
+
+    overrides = job_dir / "overrides.json"
+    if overrides.exists():
+        console.print(f"[dim]使用覆盖层：{escape(str(overrides))}[/]")
+    else:
+        console.print(
+            f"[dim]没有 {overrides.name}，按模型生成的内容重新渲染[/]"
+        )
+
+    _run_pipeline(job, job_dir, cfg, force=False, from_stage="render")
 
 
 # ------------------------------------------------------------------- batch
@@ -673,6 +800,16 @@ def _read_job(job_dir: Path) -> Job:
         console.print(f"[red]找不到任务文件：{job_path}[/]")
         raise typer.Exit(1)
     return Job.model_validate_json(job_path.read_text(encoding="utf-8"))
+
+
+def _fold_usage(job: Job) -> None:
+    """把本次进程花掉的 token 并进任务累计（和 pipeline._save 的算法一致）。"""
+    run = usage_snapshot()
+    if not run.calls:
+        return
+    job.usage.calls += run.calls
+    job.usage.prompt_tokens += run.prompt_tokens
+    job.usage.completion_tokens += run.completion_tokens
 
 
 def _load_stage(job_dir: Path, name: str, model: type[_T]) -> _T:

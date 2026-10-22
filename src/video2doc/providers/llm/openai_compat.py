@@ -16,6 +16,8 @@ from ...errors import StageError
 from .base import USAGE, LLMProvider, ProgressFn, register
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
+# 反斜杠后面不是合法转义字符：多半是模型原样抄了 Windows 路径
+_ESCAPE_RE = re.compile(r'\\(?!["\\/bfnrtu])')
 RETRY_HINT = (
     "\n\n注意：上一次输出没有形成完整 JSON（可能被长度限制截断）。"
     "请重新输出合法 JSON，并把正文压缩到 500 字以内：宁可少写，也不要被截断。"
@@ -131,12 +133,23 @@ def _extract_json(content: str) -> dict[str, Any]:
     if start >= 0 and end > start:
         text = text[start : end + 1]
     try:
-        data = json.loads(text)
+        return _loads(text)
     except json.JSONDecodeError as exc:
+        # 模型抄 OCR 里的 Windows 路径时经常忘了转义反斜杠
+        repaired = _ESCAPE_RE.sub(r"\\\\", text)
+        if repaired != text:
+            try:
+                return _loads(repaired)
+            except json.JSONDecodeError:
+                pass
         tail = content[-160:].replace("\n", " ")
         raise StageError(
-            f"LLM 返回的不是合法 JSON（末尾：…{tail}）"
+            f"LLM 返回的不是合法 JSON（{exc.msg} @ {exc.pos}，末尾：…{tail}）"
         ) from exc
+
+
+def _loads(text: str) -> dict[str, Any]:
+    data = json.loads(text, strict=False)
     if not isinstance(data, dict):
-        raise StageError(f"LLM 返回的 JSON 不是对象：{content[:300]}")
+        raise StageError(f"LLM 返回的 JSON 不是对象：{text[:300]}")
     return data

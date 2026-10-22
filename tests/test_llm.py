@@ -6,7 +6,7 @@ import pytest
 from video2doc.config import LLMConfig
 from video2doc.errors import StageError
 from video2doc.providers.llm.base import reset_usage, usage_snapshot
-from video2doc.providers.llm.openai_compat import OpenAICompatibleLLM
+from video2doc.providers.llm.openai_compat import OpenAICompatibleLLM, _extract_json
 
 
 class FakeResponse:
@@ -57,3 +57,23 @@ def test_truncated_output_reports_max_tokens_hint(monkeypatch: pytest.MonkeyPatc
     assert "max_tokens" in (info.value.hint or "")
     # 三次重试都花了 token，用量要照实记
     assert usage_snapshot().calls == 3
+
+
+def test_extract_json_repairs_unescaped_backslashes() -> None:
+    # 模型原样抄了 OCR 里的 Windows 路径，JSON 里成了非法转义
+    content = '{"markdown": "打开 C:\\Users\\me\\AppData 再试"}'
+
+    assert _extract_json(content) == {"markdown": "打开 C:\\Users\\me\\AppData 再试"}
+
+
+def test_extract_json_tolerates_raw_newlines_in_strings() -> None:
+    content = '{"markdown": "第一行\n第二行"}'
+
+    assert _extract_json(content)["markdown"] == "第一行\n第二行"
+
+
+def test_extract_json_unrecoverable_error_mentions_position() -> None:
+    with pytest.raises(StageError) as info:
+        _extract_json('{"markdown": "没写结尾}')
+
+    assert "@" in info.value.message

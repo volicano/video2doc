@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic import BaseModel
 
 from ..config import Config
+from ..overrides import OVERRIDES_NAME, apply_overrides, load_overrides, overrides_digest
 from ..pipeline import Context, Stage
 from ..render import build_html, build_markdown
 from ..schema import Critique, Document, RenderedDoc, SourceInfo
-from ..writing import llm_unavailable
 
 HTML_NAME = "tutorial.html"
 MARKDOWN_NAME = "tutorial.md"
@@ -17,7 +19,7 @@ MARKDOWN_NAME = "tutorial.md"
 class RenderStage(Stage):
     name = "render"
     title = "生成单页教程"
-    version = 2
+    version = 3
     requires = ("write", "critique")
 
     def params(self, config: Config) -> dict:
@@ -26,15 +28,29 @@ class RenderStage(Stage):
             "render": config.render.model_dump(),
         }
 
+    def local_params(self, job_dir: Path) -> dict:
+        # 人工覆盖层变了就要重新出 HTML，但它不该影响 write 的缓存
+        return {"overrides": overrides_digest(job_dir)}
+
     def skip(self, ctx: Context) -> str | None:
         if not ctx.config.write.enabled:
             return "未开启 write.enabled"
-        return llm_unavailable(ctx.config)
+        if not _done(ctx, "write"):
+            return "还没有可渲染的文档"
+        return None
 
     def run(self, ctx: Context) -> BaseModel:
         document = ctx.load("write", Document)
-        critique = ctx.load("critique", Critique)
+        critique = ctx.load("critique", Critique) if _done(ctx, "critique") else Critique()
         source = ctx.load("ingest", SourceInfo) if _done(ctx, "ingest") else None
+
+        overrides = load_overrides(ctx.job_dir)
+        if overrides is not None and not overrides.is_empty():
+            document, warnings = apply_overrides(document, overrides)
+            for warning in warnings:
+                ctx.detail(f"覆盖层：{warning}")
+            ctx.detail(f"已应用 {OVERRIDES_NAME}")
+
         title = ctx.config.render.title or document.title
 
         html_text = build_html(

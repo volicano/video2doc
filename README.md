@@ -4,9 +4,9 @@
 
 输入一条 B 站 / YouTube 链接或本地视频，输出一份可以直接发布的学习笔记：结构化的章节、可跳回原片的时间戳、关键画面截图。
 
-> **项目状态：M3（能出成品了）**
-> 当前可用：视频下载 → 音轨抽取 → 字幕复用 / 语音识别 → 可选的术语校正 → 抽帧 → 画面文字识别 → 图文对齐 → LLM 语义分段 → 逐节写作 → 质检 → **单页 HTML 教程**。
-> 下一步：M4 人工校对与批量处理。
+> **项目状态：M4（批量处理与人工改稿已可用）**
+> 当前可用：视频下载 → 音轨抽取 → 字幕复用 / 语音识别 → 可选的术语校正 → 抽帧 → 画面文字识别 → 图文对齐 → LLM 语义分段 → 逐节写作 → 质检 → **单页 HTML 教程**；批量跑批、单节重写、人工覆盖层与不调模型的重新渲染也已就绪。
+> 下一步：本地校对界面（M4.3）。
 >
 > 📖 **完整的安装、配置、命令与排错说明见 [docs/使用手册.md](docs/使用手册.md)。**
 
@@ -88,15 +88,24 @@ v2doc batch --file urls.txt --skip-done
 
 # 7. 看所有任务的状态
 v2doc status
+
+# 8. 某一节不满意：只重写这一节（调一次模型）
+v2doc rewrite output/BVxxxxxxxxx --section 4 --hint "这节重点是任务接管"
+
+# 9. 手改 overrides.json 后重新出 HTML（不调用模型）
+v2doc render output/BVxxxxxxxxx
 ```
 
 重复执行同一条命令会自动续跑；想强制重来加 `--force`，想只重跑某一步加 `--from audio`，只重写教程加 `--from write`。
+
+`tutorial.html` 里想改标题、正文或配图，不用重跑模型：在任务目录写 `overrides.json`，然后 `v2doc render` 即可（详见[使用手册](docs/使用手册.md#128-手工修改成稿overridesjson)）。
 
 ```
 output/BVxxxxxxxxx/
 ├─ tutorial.html          # 最终产物：单文件图文教程（图片已内嵌）
 ├─ tutorial.md            # 同一份内容的 Markdown，图片用相对路径
 ├─ job.json               # 任务状态、配置快照、每步指纹
+├─ overrides.json         # 人工覆盖层（可选，流水线不写）
 ├─ preview.html           # 抽帧 / OCR / 对齐的调试图
 ├─ media/                 # 原视频、音频、字幕
 ├─ frames/                # 选中的原始画面（jpg）
@@ -288,7 +297,7 @@ cookies_from_browser = "chrome"
 - [x] **M3** LLM 语义分段与逐节写作、确定性质检、单文件 HTML + Markdown 导出
 - [ ] **M4** 人工校对与批量处理
   - [x] 批量处理（`v2doc batch`）、任务状态（`v2doc status`）、token 用量统计
-  - [ ] 单节重跑与人工覆盖层（`overrides.json`）
+  - [x] 单节重跑（`v2doc rewrite`）与人工覆盖层（`overrides.json` + `v2doc render`）
   - [ ] 本地校对界面（`v2doc review`）
 - [ ] **M5** 更多 ASR（通义听悟 / FunASR）、说话人分离、模板系统
 
