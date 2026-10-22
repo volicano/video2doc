@@ -136,7 +136,10 @@ def test_m3_pipeline_writes_tutorial(tmp_path: Path, monkeypatch) -> None:
 
     job = make_job(tmp_path)
     console = Console(file=io.StringIO(), width=120, force_terminal=False)
+    # 用专用环境变量，别依赖开发机上是否恰好设置了 DEEPSEEK_API_KEY
+    monkeypatch.setenv("V2DOC_TEST_KEY", "test-key")
     config = Config(
+        llm=LLMConfig(api_key_env="V2DOC_TEST_KEY"),
         write=WriteConfig(max_sections=5),
         render=RenderConfig(embed_images=True, debug_html=False),
     )
