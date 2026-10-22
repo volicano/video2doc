@@ -46,10 +46,10 @@ dev = ["pytest>=8", "ruff>=0.4"]
 v2doc = "video2doc.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/video2doc/video2doc"
-Repository = "https://github.com/video2doc/video2doc"
-Issues = "https://github.com/video2doc/video2doc/issues"
-Changelog = "https://github.com/video2doc/video2doc/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/volicano/video2doc"
+Repository = "https://github.com/volicano/video2doc"
+Issues = "https://github.com/volicano/video2doc/issues"
+Changelog = "https://github.com/volicano/video2doc/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/video2doc"]

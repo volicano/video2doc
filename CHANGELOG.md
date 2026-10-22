@@ -45,4 +45,4 @@
 
 完整安装、配置、命令与排错说明见 [docs/使用手册.md](docs/使用手册.md)。
 
-[0.1.0]: https://github.com/video2doc/video2doc/releases/tag/v0.1.0
+[0.1.0]: https://github.com/volicano/video2doc/releases/tag/v0.1.0
