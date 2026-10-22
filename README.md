@@ -5,6 +5,7 @@
 输入一条 B 站 / YouTube 链接或本地视频，输出一份可以直接发布的学习笔记：结构化的章节、可跳回原片的时间戳、关键画面截图。
 
 [![CI](https://github.com/volicano/video2doc/actions/workflows/ci.yml/badge.svg)](https://github.com/volicano/video2doc/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/video2doc.svg)](https://pypi.org/project/video2doc/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](pyproject.toml)
 
@@ -47,10 +48,18 @@ video2doc 把这件事拆成一条**可缓存、可断点续跑的流水线**，
 
 ```bash
 # 本地语音识别 + 画面文字识别（离线、免费，推荐）
-pip install -e ".[local,ocr]"
+pip install "video2doc[local,ocr]"
 
 # 或者只用云端 ASR / 不要 OCR，不装 torch
-pip install -e "."
+pip install video2doc
+```
+
+从源码安装（参与开发）：
+
+```bash
+git clone https://github.com/volicano/video2doc
+cd video2doc
+pip install -e ".[dev,local,ocr]"
 ```
 
 Windows 装 ffmpeg：
