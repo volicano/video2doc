@@ -14,6 +14,7 @@ from rich.console import Console
 from .config import Config
 from .errors import StageError
 from .job import save_job
+from .overrides import OVERRIDES_NAME, load_overrides, save_overrides
 from .pipeline import Context
 from .providers.llm.base import fold_usage, reset_usage
 from .schema import Alignment, Document, Job, Segmentation, WrittenSection
@@ -84,6 +85,8 @@ def regenerate_section(
         )
         _write_document(job_dir, updated)
         _update_record(job, updated)
+        # 这一节已经是模型重新生成的了：旧的覆盖层再留着，渲染时会把新内容盖掉
+        _clear_section_override(job_dir, section_index)
         return Revision(document=updated, section=written, previous=previous)
     finally:
         # 即使中途失败，已经花掉的 token 也要记进任务
@@ -101,3 +104,16 @@ def _update_record(job: Job, document: Document) -> None:
     record = job.stages.get("write")
     if record is not None:
         record.summary = document.summary()
+
+
+def _clear_section_override(job_dir: Path, section_index: int) -> None:
+    """重写之后清掉这一节的覆盖层，否则渲染出来的还是旧内容。"""
+    overrides = load_overrides(job_dir)
+    if overrides is None or section_index not in overrides.sections:
+        return
+    overrides.sections.pop(section_index)
+    path = job_dir / OVERRIDES_NAME
+    if overrides.is_empty():
+        path.unlink(missing_ok=True)
+    else:
+        save_overrides(job_dir, overrides)

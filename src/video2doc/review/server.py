@@ -222,8 +222,6 @@ class ReviewApp:
             revision = regenerate_section(
                 job, self.job_dir, self.config, section_index=section, hint=hint
             )
-            # 这一节已经是模型新写的了，旧的覆盖再留着就看不到新内容
-            self._clear_section_override(section)
             result = self._render(critique=True)
             state = self._state()
 
@@ -284,19 +282,6 @@ class ReviewApp:
             "stage": "critique+render" if critique else "render",
             "log": log[-8:],
         }
-
-    def _clear_section_override(self, section: int) -> None:
-        overrides = load_overrides(self.job_dir)
-        if overrides is None or section not in overrides.sections:
-            return
-        overrides.sections.pop(section)
-        path = self.job_dir / OVERRIDES_NAME
-        if overrides.is_empty():
-            path.unlink(missing_ok=True)
-        else:
-            save_overrides(self.job_dir, overrides)
-
-    # ------------------------------------------------------------------ 静态
 
     def static(self, name: str) -> bytes:
         if name not in STATIC_FILES:

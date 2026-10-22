@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -172,6 +173,36 @@ def test_regenerate_section_updates_only_target_and_persists(tmp_path, monkeypat
 
     reloaded = Job.model_validate_json((job_dir / "job.json").read_text(encoding="utf-8"))
     assert reloaded.stages["write"].summary == saved.summary()
+
+
+def test_regenerate_section_clears_only_that_override(tmp_path, monkeypatch) -> None:
+    job, job_dir = _job_dir(tmp_path)
+    (job_dir / "overrides.json").write_text(
+        json.dumps(
+            {
+                "title": "人工标题",
+                "sections": {
+                    "1": {"title": "人工第一节"},
+                    "2": {"title": "人工第二节", "markdown": "人工正文"},
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "video2doc.revision.make_llm",
+        lambda cfg, temp=None: FakeLLM({"summary": "新摘要", "markdown": "重写后的第二节。"}),
+    )
+
+    regenerate_section(job, job_dir, Config(), section_index=2)
+
+    saved = json.loads((job_dir / "overrides.json").read_text(encoding="utf-8"))
+    # 第 2 节被模型重写了，旧覆盖必须清掉，否则渲染时看不到新内容
+    assert "2" not in saved["sections"]
+    # 其他章节和教程标题不受影响
+    assert saved["sections"]["1"]["title"] == "人工第一节"
+    assert saved["title"] == "人工标题"
 
 
 def test_regenerate_section_rejects_unknown_section(tmp_path, monkeypatch) -> None:

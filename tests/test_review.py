@@ -232,38 +232,37 @@ def test_review_error_is_reported_as_json(review: ReviewApp) -> None:
     assert error.hint == "改一下"
 
 
-def test_rewrite_clears_section_override(
-    client: httpx.Client, review: ReviewApp, tmp_path: Path, monkeypatch
+def test_rewrite_returns_new_section_and_rerenders(
+    client: httpx.Client, monkeypatch
 ) -> None:
-    # 先给第 2 节留一个覆盖，重写后应当被清掉
-    (tmp_path / "overrides.json").write_text(
-        json.dumps({"sections": {"2": {"title": "人工第二节"}}}, ensure_ascii=False),
-        encoding="utf-8",
-    )
-
     document = _document()
     new_section = document.sections[1].model_copy(
         update={"title": "模型重写", "markdown": "## 重写\n新内容。"}
     )
 
+    calls: list[tuple[int, str]] = []
+
     def fake_regenerate(job, job_dir, config, *, section_index, hint="", progress=None):
+        calls.append((section_index, hint))
         return Revision(document=document, section=new_section, previous=document.sections[1])
+
+    rendered: list[bool] = []
+
+    def fake_render(self, *, critique=False):
+        rendered.append(critique)
+        return {"elapsed": 0.1, "size": 1, "stage": "x", "log": []}
 
     monkeypatch.setattr("video2doc.review.server.llm_unavailable", lambda config: None)
     monkeypatch.setattr("video2doc.review.server.regenerate_section", fake_regenerate)
-    monkeypatch.setattr(
-        "video2doc.review.server.ReviewApp._render",
-        lambda self, critique=False: {"elapsed": 0.1, "size": 1, "stage": "x", "log": []},
-    )
+    monkeypatch.setattr("video2doc.review.server.ReviewApp._render", fake_render)
 
     response = client.post("/api/rewrite", json={"section": 2, "hint": "换个说法"})
     assert response.status_code == 200, response.text
     data = response.json()
+    assert calls == [(2, "换个说法")]
+    assert rendered == [True], "重写后要重跑质检再渲染"
     assert data["rewrite"]["section"] == 2
     assert data["rewrite"]["title"] == "模型重写"
-
-    # 覆盖层里只有第 2 节，清掉后文件就不该再存在
-    assert not (tmp_path / "overrides.json").exists()
 
 
 def test_rewrite_without_llm_key_is_rejected(
