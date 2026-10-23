@@ -52,6 +52,8 @@ class WriteStage(Stage):
             title=title,
             language=language,
             progress=ctx.progress,
+            checkpoint=ctx.path("cache", "write_sections.json"),
+            cache_version=str(self.version),
         )
         return document
 

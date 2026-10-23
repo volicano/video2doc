@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from video2doc.config import WriteConfig
 from video2doc.schema import (
     Section,
@@ -31,6 +33,22 @@ class FakeLLM:
                 payload["title"] = self.intro_title
             return payload
         return self.writer(len(self.images))
+
+
+class FlakyLLM:
+    def __init__(self, tag: str, *, fail_at: int | None = None) -> None:
+        self.tag = tag
+        self.fail_at = fail_at
+        self.calls = 0
+        self.config = SimpleNamespace(model="fake")
+
+    def complete_json(self, system: str, user: str, *, progress=None) -> dict:
+        self.calls += 1
+        if self.fail_at is not None and self.calls == self.fail_at:
+            raise RuntimeError("boom")
+        if "导语" in system:
+            return {"title": "检查点测试", "intro": "导语。"}
+        return {"summary": "摘要", "markdown": f"{self.tag} section {self.calls}"}
 
 
 def make_transcript(count: int = 20, step: float = 10.0) -> Transcript:
@@ -264,6 +282,34 @@ def test_write_document_builds_sections_and_intro() -> None:
     assert document.sections[0].images[0].image == "frames/f01.jpg"
     assert all(section.chars > 0 for section in document.sections)
     assert document.sections[0].markdown.endswith("[[img:1]]")
+
+
+def test_write_checkpoint_survives_failure(tmp_path) -> None:
+    checkpoint = tmp_path / "cache" / "write_sections.json"
+    kwargs = {
+        "segmentation": two_sections(),
+        "transcript": make_transcript(),
+        "moments": [moment(1, 0, 60), moment(2, 120, 180)],
+        "config": WriteConfig(),
+        "title": "测试",
+        "language": "zh",
+        "checkpoint": checkpoint,
+        "cache_version": "test",
+    }
+
+    with pytest.raises(RuntimeError, match="boom"):
+        write_document(provider=FlakyLLM("first", fail_at=2), **kwargs)
+
+    assert checkpoint.exists()
+
+    provider = FlakyLLM("second")
+    document = write_document(provider=provider, **kwargs)
+
+    # 第一节复用检查点，只重新写第二节和导语
+    assert provider.calls == 2
+    assert "first section 1" in document.sections[0].markdown
+    assert "second section 1" in document.sections[1].markdown
+    assert not checkpoint.exists()
 
 
 def test_duplicate_leading_title_is_removed() -> None:
