@@ -2,6 +2,13 @@
 
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [Unreleased]
+
+### 新增
+
+- `v2doc eval`：不调用模型，检查成稿的时间戳、章节覆盖、配图引用、OCR 代码块、质检和 LLM 用量；支持 `--all`、`--json`、`--strict`
+- 评测基线：两条真实视频的 OCR 代码画面与正文代码块不一致、图片未引用等问题已经能被自动发现
+
 ## [0.1.1] - 2026-10-22
 
 打包修正，无代码变更。

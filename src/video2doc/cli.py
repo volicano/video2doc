@@ -18,6 +18,7 @@ from . import __version__
 from .config import EXAMPLE_CONFIG, Config, load_config
 from .doctor import run_doctor
 from .errors import StageError, Video2DocError
+from .evaluate import EvalReport, evaluate_job
 from .job import derive_job_id, job_dir_for, open_job
 from .pipeline import Pipeline
 from .providers.asr import available_providers
@@ -469,6 +470,132 @@ def _collect_status(root: Path) -> list[_JobRow]:
 
     rows.sort(key=lambda row: (row.updated, row.job_id), reverse=True)
     return rows
+
+
+# -------------------------------------------------------------------- eval
+
+
+@app.command("eval")
+def eval_command(
+    job_dir: Path | None = typer.Argument(None, help="任务目录（包含 job.json）"),
+    all_jobs: bool = typer.Option(False, "--all", help="评测 --root 下的所有任务"),
+    root: Path = typer.Option(Path("output"), "--root", help="配合 --all 的输出根目录"),
+    as_json: bool = typer.Option(False, "--json", help="输出 JSON，便于脚本处理"),
+    strict: bool = typer.Option(False, "--strict", help="有警告时返回非零退出码"),
+) -> None:
+    """检查成稿的时间戳、章节、配图、OCR、质检和用量。"""
+    try:
+        if all_jobs:
+            reports = _collect_reports(root)
+        elif job_dir is not None:
+            reports = [evaluate_job(job_dir)]
+        else:
+            console.print("[red]指定任务目录，或加 --all 评测整个输出目录。[/]")
+            raise typer.Exit(1)
+    except Video2DocError as exc:
+        exc.render(console)
+        raise typer.Exit(1) from None
+
+    if not reports:
+        console.print(f"[dim]{escape(str(root))} 下没有可评测的任务。[/]")
+        return
+
+    if as_json:
+        import json
+
+        payload = (
+            reports[0].model_dump(mode="json")
+            if len(reports) == 1 and not all_jobs
+            else [report.model_dump(mode="json") for report in reports]
+        )
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+    else:
+        for index, report in enumerate(reports):
+            if index:
+                console.print()
+            _print_eval_report(report)
+
+    if strict and any(not report.passed for report in reports):
+        raise typer.Exit(1)
+
+
+def _collect_reports(root: Path) -> list[EvalReport]:
+    if not root.exists():
+        console.print(f"[red]目录不存在：{escape(str(root))}[/]")
+        return []
+
+    reports: list[EvalReport] = []
+    for entry in sorted(root.iterdir()):
+        if not entry.is_dir() or not (entry / "job.json").exists():
+            continue
+        try:
+            reports.append(evaluate_job(entry))
+        except Video2DocError as exc:
+            console.print(f"[yellow]跳过 {escape(entry.name)}：{escape(exc.message)}[/]")
+    return reports
+
+
+def _print_eval_report(report: EvalReport) -> None:
+    console.print(
+        Panel(
+            f"[bold]{escape(report.title)}[/]\n"
+            f"[dim]{hms(report.duration)} · {report.sections} 节 · "
+            f"{report.chars} 字 · {report.images} 图 · "
+            f"HTML {report.html_bytes / 1024:.0f} KB[/]",
+            border_style="green" if report.passed else "yellow",
+            padding=(0, 1),
+        )
+    )
+    table = Table(show_header=False, box=None, pad_edge=False)
+    table.add_column(style="dim", width=12)
+    table.add_column()
+    table.add_row(
+        "时间戳",
+        f"{report.timestamp_errors} 错 · 章节覆盖 {report.time_coverage:.0%}",
+    )
+    average = round(report.chars / report.sections) if report.sections else 0
+    table.add_row(
+        "章节",
+        f"空 {report.empty_sections} · 短 {report.short_sections} · "
+        f"长 {report.long_sections} · 平均 {average} 字",
+    )
+    table.add_row(
+        "配图",
+        f"缺失 {report.missing_image_refs} · 未用 {report.unused_images} · "
+        f"重复 {report.duplicate_images} · HTML figure {report.figures}",
+    )
+    table.add_row(
+        "OCR",
+        f"{report.ocr_text_frames}/{report.ocr_frames} 帧有字 · {report.ocr_chars} 字 · "
+        f"代码画面 {report.code_frames} · 正文代码块 {report.code_blocks}",
+    )
+    if report.transcript_utterances:
+        table.add_row(
+            "转写",
+            f"{report.transcript_utterances} 句 · {report.transcript_chars} 字 · "
+            f"覆盖 {report.transcript_coverage:.0%}",
+        )
+    if report.critique_issues or report.critique_coverage:
+        table.add_row(
+            "质检",
+            f"{report.critique_issues} 条（{report.critique_high} 高）· "
+            f"覆盖 {report.critique_coverage:.0%} · 重写 {report.rewrites} 节",
+        )
+    table.add_row(
+        "LLM",
+        f"{report.llm_calls} 次 · {report.llm_prompt_tokens:,} 输入 / "
+        f"{report.llm_completion_tokens:,} 输出 · 总耗时 {report.total_elapsed:.0f}s",
+    )
+    console.print(table)
+
+    if report.notes:
+        console.print("[dim]" + "；".join(escape(note) for note in report.notes) + "[/]")
+    if report.warnings:
+        console.print("[yellow]警告[/]")
+        for warning in report.warnings:
+            console.print(f"  [yellow]•[/] {escape(warning)}")
+    else:
+        console.print("[green]✓ 结构检查通过[/]")
 
 
 # ------------------------------------------------------------------ doctor

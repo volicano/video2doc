@@ -102,17 +102,23 @@ v2doc batch --file urls.txt --skip-done
 # 7. 看所有任务的状态
 v2doc status
 
-# 8. 某一节不满意：只重写这一节（调一次模型）
+# 8. 检查成稿结构：时间戳 / 配图 / OCR / 质检
+v2doc eval output/BVxxxxxxxxx
+v2doc eval --all --root output     # 一次看所有任务
+
+# 9. 某一节不满意：只重写这一节（调一次模型）
 v2doc rewrite output/BVxxxxxxxxx --section 4 --hint "这节重点是任务接管"
 
-# 9. 手改 overrides.json 后重新出 HTML（不调用模型）
+# 10. 手改 overrides.json 后重新出 HTML（不调用模型）
 v2doc render output/BVxxxxxxxxx
 
-# 10. 在浏览器里可视化校对：改标题 / 正文 / 配图，保存即重新渲染
+# 11. 在浏览器里可视化校对：改标题 / 正文 / 配图，保存即重新渲染
 v2doc review output/BVxxxxxxxxx
 ```
 
 重复执行同一条命令会自动续跑；想强制重来加 `--force`，想只重跑某一步加 `--from audio`，只重写教程加 `--from write`。
+
+改完 prompt、换模型或调抽帧后，跑一次 `v2doc eval --all --root output` 看结构指标有没有退步；当前两条真实视频的基线在 [docs/评测基线.md](docs/评测基线.md)。
 
 `tutorial.html` 里想改标题、正文或配图，不用重跑模型。推荐直接用 `v2doc review` 打开本地校对界面（只监听 `127.0.0.1`，纯离线），保存时写 `overrides.json` 并自动重新渲染；也可以手写 `overrides.json` 后执行 `v2doc render`（详见[使用手册](docs/使用手册.md#128-手工修改成稿overridesjson)）。
 
