@@ -72,6 +72,21 @@ def test_extract_json_tolerates_raw_newlines_in_strings() -> None:
     assert _extract_json(content)["markdown"] == "第一行\n第二行"
 
 
+def test_extract_json_keeps_code_fences_inside_markdown() -> None:
+    content = '```json\n{"summary": "演示", "markdown": "```js\\nconst x = 1;\\n```\\n正文"}\n```'
+
+    payload = _extract_json(content)
+
+    assert "```js" in payload["markdown"]
+    assert payload["markdown"].endswith("正文")
+
+
+def test_extract_json_ignores_trailing_text() -> None:
+    payload = _extract_json('{"summary": "ok", "markdown": "正文"}\n\n[]')
+
+    assert payload == {"summary": "ok", "markdown": "正文"}
+
+
 def test_extract_json_unrecoverable_error_mentions_position() -> None:
     with pytest.raises(StageError) as info:
         _extract_json('{"markdown": "没写结尾}')

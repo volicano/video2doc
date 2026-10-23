@@ -15,8 +15,6 @@ from typing import Any
 from ...errors import StageError
 from .base import USAGE, LLMProvider, ProgressFn, register
 
-_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
-# 反斜杠后面不是合法转义字符：多半是模型原样抄了 Windows 路径
 _ESCAPE_RE = re.compile(r'\\(?!["\\/bfnrtu])')
 RETRY_HINT = (
     "\n\n注意：上一次输出没有形成完整 JSON（可能被长度限制截断）。"
@@ -95,9 +93,7 @@ class OpenAICompatibleLLM(LLMProvider):
                 content = message["message"]["content"]
                 finish = message.get("finish_reason", "")
             except (KeyError, IndexError, ValueError) as exc:
-                raise StageError(
-                    f"LLM 响应格式不符合预期：{response.text[:300]}"
-                ) from exc
+                raise StageError(f"LLM 响应格式不符合预期：{response.text[:300]}") from exc
 
             usage = data.get("usage") or {}
             USAGE.add(usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
@@ -125,31 +121,38 @@ class OpenAICompatibleLLM(LLMProvider):
 
 def _extract_json(content: str) -> dict[str, Any]:
     text = content.strip()
-    fenced = _FENCE_RE.search(text)
-    if fenced:
-        text = fenced.group(1).strip()
+    # 只剥掉最外层围栏。markdown 里本身可能还有 ```js 代码块，
+    # 用正则找第一对围栏会把 JSON 从代码块中间截断。
+    if text.startswith("```"):
+        newline = text.find("\n")
+        if newline != -1:
+            text = text[newline + 1 :]
+        if text.rstrip().endswith("```"):
+            text = text.rstrip()[:-3]
+        text = text.strip()
+
     start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        text = text[start : end + 1]
+    if start < 0:
+        raise StageError(f"LLM 返回的内容里没有 JSON 对象：{content[:300]}")
+    candidate = text[start:]
+    decoder = json.JSONDecoder(strict=False)
+
     try:
-        return _loads(text)
+        data, _ = decoder.raw_decode(candidate)
+        if isinstance(data, dict):
+            return data
+        raise StageError(f"LLM 返回的 JSON 不是对象：{candidate[:300]}")
     except json.JSONDecodeError as exc:
         # 模型抄 OCR 里的 Windows 路径时经常忘了转义反斜杠
-        repaired = _ESCAPE_RE.sub(r"\\\\", text)
-        if repaired != text:
+        repaired = _ESCAPE_RE.sub(r"\\\\", candidate)
+        if repaired != candidate:
             try:
-                return _loads(repaired)
+                data, _ = decoder.raw_decode(repaired)
+                if isinstance(data, dict):
+                    return data
             except json.JSONDecodeError:
                 pass
         tail = content[-160:].replace("\n", " ")
         raise StageError(
             f"LLM 返回的不是合法 JSON（{exc.msg} @ {exc.pos}，末尾：…{tail}）"
         ) from exc
-
-
-def _loads(text: str) -> dict[str, Any]:
-    data = json.loads(text, strict=False)
-    if not isinstance(data, dict):
-        raise StageError(f"LLM 返回的 JSON 不是对象：{text[:300]}")
-    return data
