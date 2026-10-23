@@ -131,6 +131,9 @@ class RenderConfig(Section):
     format: str = "html-single"
     theme: str = "light"  # light | dark
     embed_images: bool = True
+    # 内嵌图片的最长边与 WebP 质量；嫌 HTML 大就调小，教程截图默认 1280/78 足够清晰
+    image_width: int = 1280
+    image_quality: int = 78
     # 生成 preview.html，用来肉眼检查抽帧和 OCR 选得对不对
     debug_html: bool = True
     # 教程标题，留空则用视频标题

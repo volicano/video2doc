@@ -35,7 +35,7 @@ app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
     rich_markup_mode="rich",
-    help="把面试 / 教学视频转成图文教程。\n\n示例：v2doc run \"https://www.bilibili.com/video/BVxxxx\"",
+    help='把面试 / 教学视频转成图文教程。\n\n示例：v2doc run "https://www.bilibili.com/video/BVxxxx"',
 )
 console = Console()
 
@@ -111,9 +111,7 @@ def resume(
 @app.command()
 def rewrite(
     job_dir: Path = typer.Argument(..., help="任务目录（包含 job.json）"),
-    section: int = typer.Option(
-        ..., "--section", "-s", min=1, help="要重写的章节号（从 1 开始）"
-    ),
+    section: int = typer.Option(..., "--section", "-s", min=1, help="要重写的章节号（从 1 开始）"),
     hint: str = typer.Option("", "--hint", help="额外写作要求，例如「重点是任务接管」"),
     config: Path | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
 ) -> None:
@@ -182,9 +180,7 @@ def render(
     if overrides.exists():
         console.print(f"[dim]使用覆盖层：{escape(str(overrides))}[/]")
     else:
-        console.print(
-            f"[dim]没有 {overrides.name}，按模型生成的内容重新渲染[/]"
-        )
+        console.print(f"[dim]没有 {overrides.name}，按模型生成的内容重新渲染[/]")
 
     _run_pipeline(job, job_dir, cfg, force=False, from_stage="render")
 
@@ -218,9 +214,7 @@ def batch(
     targets: list[str] | None = typer.Argument(
         None, help="视频链接或本地文件，可传多个；也可以只用 --file"
     ),
-    file: Path | None = typer.Option(
-        None, "--file", "-f", help="每行一个链接，# 开头为注释"
-    ),
+    file: Path | None = typer.Option(None, "--file", "-f", help="每行一个链接，# 开头为注释"),
     out: Path = typer.Option(Path("output"), "--out", "-o", help="输出根目录"),
     config: Path | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
     skip_done: bool = typer.Option(False, "--skip-done", help="跳过已生成教程的任务"),
@@ -526,6 +520,9 @@ def _collect_reports(root: Path) -> list[EvalReport]:
 
     reports: list[EvalReport] = []
     for entry in sorted(root.iterdir()):
+        if entry.name.startswith(("_", ".")):
+            # 备份 / 临时目录不参与批量评测
+            continue
         if not entry.is_dir() or not (entry / "job.json").exists():
             continue
         try:
@@ -677,11 +674,7 @@ def preview(
 
     console.print(
         f"[dim]{transcript.provider} · {transcript.summary()}[/]"
-        + (
-            f" [green]已校正 {transcript.corrections} 处[/]"
-            if transcript.corrections
-            else ""
-        )
+        + (f" [green]已校正 {transcript.corrections} 处[/]" if transcript.corrections else "")
         + "\n"
     )
     for utterance in utterances:

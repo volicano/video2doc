@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import base64
+import io
 from pathlib import Path
 
 from PIL import Image
 
 from video2doc.config import RenderConfig
-from video2doc.render.html import build_html, build_markdown
+from video2doc.render.html import _embed, build_html, build_markdown
 from video2doc.schema import (
     Critique,
     Document,
@@ -88,7 +90,7 @@ def test_build_html_embeds_images_and_replaces_tokens(tmp_path: Path) -> None:
         config=RenderConfig(embed_images=True),
     )
     assert "<title>闭包与内存泄漏</title>" in html
-    assert '<h2>闭包是什么</h2>' in html
+    assert "<h2>闭包是什么</h2>" in html
     assert "<figure>" in html
     assert "data:image/webp;base64," in html
     # 默认不显示 OCR 图注（录屏类视频噪声大）
@@ -103,6 +105,19 @@ def test_build_html_embeds_images_and_replaces_tokens(tmp_path: Path) -> None:
     assert "&lt;script&gt;" in html
     # 时间戳链接带上 ?t=
     assert "https://www.bilibili.com/video/BV1xx?p=1&amp;t=0" in html
+
+
+def test_image_width_and_quality_are_applied(tmp_path: Path) -> None:
+    path = tmp_path / "frames" / "f01.jpg"
+    make_image(path, (1600, 900))
+
+    data = _embed(path, width=640, quality=60)
+
+    assert data.startswith("data:image/webp;base64,")
+    raw = base64.b64decode(data.split(",", 1)[1])
+    with Image.open(io.BytesIO(raw)) as image:
+        assert image.width == 640
+        assert image.height == 360
 
 
 def test_image_captions_can_be_enabled(tmp_path: Path) -> None:

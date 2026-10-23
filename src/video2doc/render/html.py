@@ -304,7 +304,13 @@ def _figure_html(
     link: str | None,
     config: RenderConfig,
 ) -> str:
-    src = _image_src(ref.image, job_dir, config.embed_images)
+    src = _image_src(
+        ref.image,
+        job_dir,
+        config.embed_images,
+        width=config.image_width,
+        quality=config.image_quality,
+    )
     stamp = html.escape(hms(ref.time))
     if link:
         stamp = (
@@ -390,16 +396,29 @@ def _clean_caption(text: str, limit: int = 60) -> str:
     return " ".join((text or "").split())[:limit]
 
 
-def _image_src(rel_path: str, job_dir: Path, embed: bool) -> str:
+def _image_src(
+    rel_path: str,
+    job_dir: Path,
+    embed: bool,
+    *,
+    width: int = _MAX_IMAGE_WIDTH,
+    quality: int = _IMAGE_QUALITY,
+) -> str:
     if not embed:
         return rel_path
-    data = _embed(job_dir / rel_path)
+    data = _embed(job_dir / rel_path, width=width, quality=quality)
     return data or rel_path
 
 
-def _embed(path: Path, width: int = _MAX_IMAGE_WIDTH) -> str:
+def _embed(
+    path: Path,
+    width: int = _MAX_IMAGE_WIDTH,
+    quality: int = _IMAGE_QUALITY,
+) -> str:
     if not path.exists():
         return ""
+    width = max(320, min(int(width), 2400))
+    quality = max(40, min(int(quality), 95))
     try:
         with Image.open(path) as image:
             rgb = image.convert("RGB")
@@ -407,7 +426,7 @@ def _embed(path: Path, width: int = _MAX_IMAGE_WIDTH) -> str:
                 ratio = width / rgb.width
                 rgb = rgb.resize((width, max(1, round(rgb.height * ratio))), Image.LANCZOS)
             buffer = io.BytesIO()
-            rgb.save(buffer, "WEBP", quality=_IMAGE_QUALITY, method=4)
+            rgb.save(buffer, "WEBP", quality=quality, method=4)
     except OSError:
         return ""
     payload = base64.b64encode(buffer.getvalue()).decode("ascii")
