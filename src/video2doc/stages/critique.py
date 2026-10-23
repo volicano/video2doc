@@ -14,7 +14,7 @@ from ..writing.critique import critique_document
 class CritiqueStage(Stage):
     name = "critique"
     title = "质量检查"
-    version = 3
+    version = 5
     requires = ("write", "segment", "align")
 
     def params(self, config: Config) -> dict:
@@ -23,7 +23,7 @@ class CritiqueStage(Stage):
             "review": config.write.review,
             "max_rewrites": config.write.max_rewrites,
             "llm": config.llm.model_dump() if config.write.review else {},
-            "prompt_version": 1,
+            "prompt_version": 3,
         }
 
     def skip(self, ctx: Context) -> str | None:

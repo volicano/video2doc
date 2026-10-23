@@ -16,12 +16,14 @@ from ..schema import (
     VisualMoment,
     WrittenSection,
 )
+from ..utils.code import code_block_markdown
 from ..utils.common import hms
 from ..utils.markdown import demote_h1, drop_leading_title
 from .materials import assign_moments, build_material, count_chars
 from .prompts import INTRO_SYSTEM, WRITE_SYSTEM, intro_user, write_user
 
 IMG_RE = re.compile(r"\[\[img:(\d+)\]\]", re.IGNORECASE)
+CODE_CAVEAT = "> 代码为画面识别结果，符号可能有误，建议对照原片核对。"
 ProgressFn = Callable[[str], None]
 RETRY_SUFFIX = "\n\n注意：上一次没有返回 markdown 正文。这次必须返回合法 JSON，且 markdown 不为空。"
 TITLE_SUFFIX = (
@@ -81,6 +83,7 @@ def write_section(
 
     markdown = sanitize_markdown(markdown, len(material.refs))
     markdown = drop_leading_title(markdown, section_title)
+    markdown = _ensure_code_block(markdown, material.code_blocks)
     return WrittenSection(
         index=section.index,
         title=section_title,
@@ -172,6 +175,22 @@ def _payload_markdown(payload: dict) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return ""
+
+
+def _ensure_code_block(markdown: str, code_blocks: list[str]) -> str:
+    """模型只写了「代码可能有误」却没给代码块时，用 OCR 里抽出的代码补上。
+
+    这是一道兜底，不替代模型整理：抽出的代码仍然带 OCR 噪声，
+    所以保留原有的免责声明，让读者知道要对照原片。
+    """
+    if not code_blocks or "```" in markdown:
+        return markdown
+    block = code_block_markdown(max(code_blocks, key=len))
+    marker = "> 代码为画面识别结果"
+    if marker in markdown:
+        index = markdown.find(marker)
+        return markdown[:index].rstrip() + "\n\n" + block + "\n\n" + markdown[index:]
+    return markdown.rstrip() + "\n\n" + block + "\n\n" + CODE_CAVEAT
 
 
 def _fallback_markdown(text: str, refs: list[ImageRef]) -> str:

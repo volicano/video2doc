@@ -11,7 +11,7 @@ from video2doc.schema import (
     VisualMoment,
 )
 from video2doc.writing.materials import assign_moments, build_material, caption_for
-from video2doc.writing.write import sanitize_markdown, write_document
+from video2doc.writing.write import sanitize_markdown, write_document, write_section
 
 
 class FakeLLM:
@@ -139,6 +139,67 @@ def test_build_material_caps_and_sorts_images() -> None:
     ]
     assert material.prompt_images[0].startswith("[1] 00:40")
     assert "第 2 页标题" in material.prompt_images[0]
+
+
+def test_build_material_keeps_code_layout() -> None:
+    section = two_sections().sections[0]
+    code_moment = moment(1, 10, 20)
+    code_moment.ocr_text = (
+        "const task = await useOrCreateTaskSpace('search');\nfunction run() {\n  return task;\n}"
+    )
+
+    material = build_material(section, make_transcript().utterances, [code_moment], max_images=1)
+
+    prompt = material.prompt_images[0]
+    assert "【代码画面】" in prompt
+    assert "\n  return task;" in prompt
+    assert "const task" in prompt
+
+
+def test_code_frame_survives_image_limit() -> None:
+    section = two_sections().sections[0]
+    moments = [
+        moment(1, 10, 20, score=0.9),
+        moment(2, 30, 40, score=0.8),
+        moment(3, 50, 60, score=0.7),
+    ]
+    moments[2].ocr_text = "const x = 1;\nfunction run() { return x; }"
+
+    material = build_material(section, make_transcript().utterances, moments, max_images=2)
+
+    assert len(material.prompt_images) == 2
+    assert any("【代码画面】" in line for line in material.prompt_images)
+    assert any("function run" in line for line in material.prompt_images)
+
+
+def test_write_section_backfills_code_block() -> None:
+    section = two_sections().sections[0]
+    code_moment = moment(1, 10, 20)
+    code_moment.ocr_text = (
+        "ego-browser nodejs<<'EOF'\n"
+        "const task = await useOrCreateTaskSpace('search');\n"
+        "await openOrReuseTab('https://github.com/issues');\n"
+        "EOF"
+    )
+    llm = FakeLLM(
+        lambda call: {
+            "summary": "",
+            "markdown": "正文。\n\n> 代码为画面识别结果，符号可能有误，建议对照原片核对。",
+        }
+    )
+
+    written = write_section(
+        section,
+        make_transcript().utterances,
+        [code_moment],
+        llm,
+        WriteConfig(max_images_per_section=1),
+        language="zh",
+    )
+
+    assert "```js" in written.markdown
+    assert "const task" in written.markdown
+    assert written.markdown.count("> 代码为画面识别结果") == 1
 
 
 # -------------------------------------------------------------- 清洗 Markdown

@@ -21,17 +21,12 @@ from pydantic import BaseModel, Field
 from .errors import Video2DocError
 from .overrides import apply_overrides, load_overrides
 from .schema import Critique, Document, Job, OCRResult, SourceInfo, Transcript
+from .utils.code import looks_like_code
 from .writing.materials import count_chars
 
 T = TypeVar("T", bound=BaseModel)
 
 IMG_RE = re.compile(r"\[\[img:(\d+)\]\]", re.IGNORECASE)
-FENCE_RE = re.compile(r"^```", re.MULTILINE)
-# 只抓比较明确的代码特征，避免把带括号的口播当成代码
-CODE_HINT_RE = re.compile(
-    r"(=>|::|#include|</?[a-zA-Z][\w-]*>|\b(?:def|function|const|let|var|class|import|return|"
-    r"async|await|public|private|static|void)\s+|[{}();]{3,}|\w+\([^)]*\)\s*;)"
-)
 
 
 class SectionMetric(BaseModel):
@@ -258,7 +253,7 @@ def evaluate_job(job_dir: Path) -> EvalReport:
         sum(1 for frame in ocr.frames if frame.char_count > 0 or frame.text.strip()) if ocr else 0
     )
     ocr_chars = ocr.total_chars if ocr else 0
-    code_frames = sum(1 for frame in ocr.frames if CODE_HINT_RE.search(frame.text)) if ocr else 0
+    code_frames = sum(1 for frame in ocr.frames if looks_like_code(frame.text)) if ocr else 0
 
     if ocr is None:
         notes.append("没有 OCR 产物，跳过画面文字检查")

@@ -9,10 +9,12 @@ import re
 from dataclasses import dataclass, field
 
 from ..schema import ImageRef, Section, Utterance, VisualMoment
+from ..utils.code import extract_code_block, looks_like_code
 from ..utils.common import hms
 
 CAPTION_CHARS = 40
 PROMPT_OCR_CHARS = 400
+PROMPT_CODE_CHARS = 1400
 # 这些多半是浏览器 / 应用界面的残留文字，当图注只会显得很潦草
 _CAPTION_NOISE = {
     "bilibili",
@@ -38,6 +40,7 @@ class Material:
     text: str
     refs: list[ImageRef] = field(default_factory=list)
     prompt_images: list[str] = field(default_factory=list)
+    code_blocks: list[str] = field(default_factory=list)
 
 
 def section_text(
@@ -92,21 +95,57 @@ def build_material(
         )
         for index, moment in enumerate(chosen, 1)
     ]
-    prompt_images = [
-        f"[{ref.id}] {hms(ref.time)} · {ref.kind}"
-        + (f" · 画面文字：{image_digest(moment)}" if image_digest(moment) else "")
-        for ref, moment in zip(refs, chosen, strict=False)
+    prompt_images = [_prompt_image(ref, moment) for ref, moment in zip(refs, chosen, strict=False)]
+    code_blocks = [
+        block
+        for moment in chosen
+        if _is_code_moment(moment) and (block := extract_code_block(moment.ocr_text))
     ]
-    return Material(text=text, refs=refs, prompt_images=prompt_images)
+    return Material(
+        text=text,
+        refs=refs,
+        prompt_images=prompt_images,
+        code_blocks=code_blocks,
+    )
+
+
+def _prompt_image(ref: ImageRef, moment: VisualMoment) -> str:
+    head = f"[{ref.id}] {hms(ref.time)} · {ref.kind}"
+    digest = image_digest(moment)
+    if not digest:
+        return head
+    if digest.startswith("【代码画面】"):
+        # 代码单独起一行，模型才看得见换行和缩进
+        return f"{head}\n{digest}"
+    return f"{head} · 画面文字：{digest}"
 
 
 def _select_moments(moments: list[VisualMoment], limit: int) -> list[VisualMoment]:
     if limit <= 0 or not moments:
         return []
-    # 先按信息量取前 N 张，再按时间排序，保证编号顺序和讲述顺序一致
-    best = sorted(moments, key=lambda moment: moment.score, reverse=True)[:limit]
-    best.sort(key=lambda moment: moment.time)
-    return best
+    ranked = sorted(moments, key=lambda moment: moment.score, reverse=True)
+
+    # 代码画面通常在「信息密度」上打不过整屏 UI，但它是正文里唯一能还原代码的依据。
+    # 给代码画面保留一半名额，避免它们全部被高分截图挤掉。
+    selected: list[VisualMoment] = []
+    code_moments = [moment for moment in ranked if _is_code_moment(moment)]
+    if code_moments:
+        selected.extend(code_moments[: max(1, limit // 2)])
+
+    for moment in ranked:
+        if len(selected) >= limit:
+            break
+        if moment not in selected:
+            selected.append(moment)
+
+    selected = selected[:limit]
+    # 编号顺序跟着讲述顺序走
+    selected.sort(key=lambda moment: moment.time)
+    return selected
+
+
+def _is_code_moment(moment: VisualMoment) -> bool:
+    return moment.kind == "code" or looks_like_code(moment.ocr_text)
 
 
 def caption_for(moment: VisualMoment) -> str:
@@ -138,8 +177,20 @@ def _caption_score(text: str) -> float:
 
 
 def image_digest(moment: VisualMoment) -> str:
-    text = " ".join(moment.ocr_text.split())
-    return text[:PROMPT_OCR_CHARS]
+    """给模型看的画面文字。
+
+    普通画面压成一行，省 token；代码画面保留换行和缩进，否则模型没法还原代码。
+    """
+    text = moment.ocr_text.strip()
+    if not text:
+        return ""
+    if looks_like_code(text):
+        lines = [line.rstrip() for line in text.splitlines() if line.strip()]
+        body = "\n".join(lines)
+        if len(body) > PROMPT_CODE_CHARS:
+            body = body[:PROMPT_CODE_CHARS] + "\n……（后文过长，已截断）"
+        return "【代码画面】\n" + body
+    return " ".join(text.split())[:PROMPT_OCR_CHARS]
 
 
 def count_chars(markdown: str) -> int:
