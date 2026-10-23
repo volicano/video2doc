@@ -11,7 +11,7 @@
 
 ### 改进
 
-- 代码保真：代码画面 OCR 保留换行和缩进；抽帧时给代码画面保留名额；模型漏写代码块时，从 OCR 的 heredoc 里抽一段代码补上，并保留免责声明
+- 代码保真：代码画面 OCR 保留换行和缩进；抽帧时给代码画面保留名额；模型漏写代码块时，从 OCR 的 heredoc 里抽一段代码补上，并保留免责声明；代码画面判定收紧为行首关键字 / heredoc / 多行真实代码，避免把 UI 文案和普通笔记误判成代码
 - 写作断点续跑：每写完一节落盘到 `cache/write_sections.json`，LLM 中途失败后重跑不会重写已完成的节；整篇成功收尾后自动清理
 - OCR 并行与断点续跑：`ocr.workers` 默认 4 线程（RapidOCR，CPU 上约 1.5x）；每帧结果写入 `cache/ocr_frames.json`，中途失败后不重做已完成帧
 - 渲染体积可调：新增 `render.image_width` / `render.image_quality`；`v2doc eval --all` 自动跳过 `_` / `.` 开头的备份目录

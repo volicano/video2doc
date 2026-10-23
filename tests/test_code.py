@@ -22,6 +22,27 @@ EOF
 键盘与输入
 """
 
+OBSIDIAN_PLUGIN_UI = """Github仓库地址：https:/lgithub.com/liamcain/obsidian-calendar-plugin
+当前显示了43个插件：
+<Oct2020>
+Wed 0ctober28,2020
+Simple calendar widget.
+Calendar 已安装
+作者：Liam Cain
+"""
+
+OBSIDIAN_JOURNAL = """tags:
+type：日记
+created:{{date))(time))
+{date}日记
+Templates/日记模板
+Thought for 0s
+"""
+
+OBSIDIAN_TASKS = """-[/] =>[x],name:'In Progress', type:'IN_PROGRESS'.
+-[-]=>[],name:'Cancelled',type:'CANCELLED'.
+"""
+
 
 def test_extract_code_from_noisy_heredoc() -> None:
     code = extract_code_block(NOISY_CODE)
@@ -41,6 +62,30 @@ def test_extract_code_returns_empty_for_plain_ui() -> None:
 def test_looks_like_code_ignores_paren_heavy_ui() -> None:
     assert not looks_like_code("点击这里（设置）然后继续")
     assert looks_like_code("const task = await run();")
+
+
+def test_looks_like_code_ignores_obsidian_ui_and_templates() -> None:
+    assert not looks_like_code(OBSIDIAN_PLUGIN_UI)
+    assert not looks_like_code(OBSIDIAN_JOURNAL)
+    assert not looks_like_code(OBSIDIAN_TASKS)
+
+
+def test_looks_like_code_accepts_real_snippets() -> None:
+    assert looks_like_code("const task = await useOrCreateTaskSpace('search');")
+    assert looks_like_code("def run():\n    return 1")
+    assert looks_like_code("import os\nprint('hi')")
+    assert looks_like_code("$ npm install foo\nnpm run build")
+    assert looks_like_code("if (ready) {\n  return true;\n}")
+
+
+def test_looks_like_code_requires_real_syntax_for_prose() -> None:
+    assert not looks_like_code("if you want to continue")
+    assert not looks_like_code("<div>Hello</div>")
+
+
+def test_extract_code_block_ignores_prose_frames() -> None:
+    assert extract_code_block(OBSIDIAN_JOURNAL) == ""
+    assert extract_code_block(OBSIDIAN_TASKS) == ""
 
 
 def test_code_block_guesses_language() -> None:
