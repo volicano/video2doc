@@ -36,6 +36,11 @@ dependencies = [
 [project.optional-dependencies]
 # 本地语音识别（离线、免费）
 local = ["faster-whisper>=1.0.3"]
+# CUDA 运行库（可选；配合 local 使用。仍需 NVIDIA 驱动和可用的 CUDA GPU）
+gpu = [
+  "nvidia-cublas-cu12>=12; sys_platform != 'darwin'",
+  "nvidia-cudnn-cu12>=9; sys_platform != 'darwin'",
+]
 # 云端语音识别（OpenAI 及任何兼容 /audio/transcriptions 的服务）
 cloud = ["httpx>=0.27"]
 # 画面文字识别（PP-OCR 模型的 ONNX 版，离线、无需 paddlepaddle）

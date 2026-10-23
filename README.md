@@ -50,6 +50,9 @@ video2doc 把这件事拆成一条**可缓存、可断点续跑的流水线**，
 # 本地语音识别 + 画面文字识别（离线、免费，推荐）
 pip install "video2doc[local,ocr]"
 
+# 有 NVIDIA 显卡时可选：补上 CUDA 12 运行库，ASR 自动走 GPU
+pip install "video2doc[local,ocr,gpu]"
+
 # 或者只用云端 ASR / 不要 OCR，不装 torch
 pip install video2doc
 ```
@@ -155,7 +158,7 @@ output/BVxxxxxxxxx/
 ```toml
 [asr]
 provider = "faster-whisper"
-model = "large-v3"        # 显存吃紧就换 medium / small
+model = "large-v3"        # 要速度可换 large-v3-turbo（需较新的 faster-whisper）
 language = "zh"
 device = "auto"           # 自动选 cuda，没有就 cpu
 compute_type = "auto"     # cuda→float16, cpu→int8
@@ -163,7 +166,7 @@ hotwords = ["闭包", "垃圾回收", "时间复杂度", "AQS", "CAS"]
 auto_hotwords = true      # 从视频标题和标签自动补充热词
 ```
 
-`hotwords` 是目前性价比最高的一个开关：中文技术术语（尤其是缩写和英文标识符）本来就是 ASR 的重灾区，把它们塞进 `initial_prompt` 几乎零成本。
+`hotwords` 是目前性价比最高的一个开关：中文技术术语（尤其是缩写和英文标识符）本来就是 ASR 的重灾区。faster-whisper 1.2+ 会同时使用原生 `hotwords` 和 `initial_prompt`，产品名、缩写这类词比只靠提示词更稳。
 
 ### 术语校正（可选）
 

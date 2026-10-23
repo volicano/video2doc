@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import inspect
 import math
+import os
+import sys
 from pathlib import Path
 
 from ...errors import StageError, ToolMissingError
@@ -10,6 +13,38 @@ from ...hotwords import build_initial_prompt
 from ...schema import Utterance
 from ...utils.common import hms
 from .base import ASRProvider, ProgressFn, register
+
+# os.add_dll_directory 返回的句柄必须一直持有，否则目录会从 DLL 搜索路径里移除
+_DLL_HANDLES: list[object] = []
+
+
+def _enable_nvidia_dlls() -> None:
+    """把通过 pip 安装的 CUDA 运行库加入 DLL 搜索路径。
+
+    Windows 上 ctranslate2 不会自动发现 site-packages/nvidia/*/bin，
+    用户即使装了 nvidia-cublas-cu12 / nvidia-cudnn-cu12 也会报 DLL not found。
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import nvidia
+    except ImportError:
+        return
+    roots = [Path(p) for p in getattr(nvidia, "__path__", []) if p]
+    if not roots and nvidia.__file__:
+        roots = [Path(nvidia.__file__).parent]
+    for root in roots:
+        for bin_dir in sorted(root.glob("*/bin")):
+            if not bin_dir.is_dir():
+                continue
+            resolved = str(bin_dir.resolve())
+            if resolved in os.environ.get("PATH", "").split(os.pathsep):
+                continue
+            try:
+                _DLL_HANDLES.append(os.add_dll_directory(resolved))
+            except OSError:
+                continue
+            os.environ["PATH"] = resolved + os.pathsep + os.environ.get("PATH", "")
 
 
 @register
@@ -27,6 +62,7 @@ class FasterWhisperProvider(ASRProvider):
         initial_prompt: str | None = None,
         progress: ProgressFn | None = None,
     ) -> list[Utterance]:
+        _enable_nvidia_dlls()
         try:
             from faster_whisper import WhisperModel
         except ImportError as exc:
@@ -40,7 +76,15 @@ class FasterWhisperProvider(ASRProvider):
         if progress:
             progress(f"加载 {self.config.model}（{device}/{compute_type}），首次运行会下载模型…")
 
-        model = _load_model(WhisperModel, self.config.model, device, compute_type)
+        try:
+            model = _load_model(WhisperModel, self.config.model, device, compute_type)
+        except StageError:
+            if device == "cpu":
+                raise
+            if progress:
+                progress("CUDA 初始化失败，回退 CPU/int8 继续…")
+            device, compute_type = "cpu", "int8"
+            model = _load_model(WhisperModel, self.config.model, device, compute_type)
         prompt = build_initial_prompt(hotwords, language, initial_prompt)
 
         if progress:
@@ -55,6 +99,9 @@ class FasterWhisperProvider(ASRProvider):
             "condition_on_previous_text": False,  # 减少长视频里的复读机现象
             "word_timestamps": False,
         }
+        if hotwords and _supports_option(model.transcribe, "hotwords"):
+            # faster-whisper 1.2 的原生 hotwords 比只靠 initial_prompt 更能纠正产品名
+            options["hotwords"] = " ".join(hotwords)
         batch_size = max(1, self.config.batch_size)
         if batch_size > 1:
             try:
@@ -123,6 +170,14 @@ def _audio_input(audio: Path):
     return np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
 
 
+def _supports_option(fn, name: str) -> bool:
+    """老版本 faster-whisper 没有 hotwords 参数，先探测再传，避免 TypeError。"""
+    try:
+        return name in inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return False
+
+
 def _load_model(model_cls, model_name: str, device: str, compute_type: str):
     try:
         return model_cls(model_name, device=device, compute_type=compute_type)
@@ -130,7 +185,11 @@ def _load_model(model_cls, model_name: str, device: str, compute_type: str):
         message = str(exc)
         if compute_type != "default" and _looks_like_compute_problem(message):
             # 某些 GPU/驱动不支持 float16，退回到最保守的配置
-            return model_cls(model_name, device=device, compute_type="default")
+            try:
+                return model_cls(model_name, device=device, compute_type="default")
+            except Exception as retry_exc:  # noqa: BLE001
+                message = str(retry_exc)
+                exc = retry_exc
         raise StageError(
             f"加载模型失败：{model_name}（{device}/{compute_type}）",
             hint=_model_hint(message),
@@ -145,6 +204,8 @@ def _looks_like_compute_problem(message: str) -> bool:
             "compute type",
             "float16",
             "cuda",
+            "cublas",
+            "cudnn",
             "dtype",
             "not supported",
             "out of memory",

@@ -16,6 +16,9 @@
 - OCR 并行与断点续跑：`ocr.workers` 默认 4 线程（RapidOCR，CPU 上约 1.5x）；每帧结果写入 `cache/ocr_frames.json`，中途失败后不重做已完成帧
 - 渲染体积可调：新增 `render.image_width` / `render.image_quality`；`v2doc eval --all` 自动跳过 `_` / `.` 开头的备份目录
 - ASR 可选批处理：新增 `asr.batch_size`（默认 1）；`>1` 时走 faster-whisper 的 batched pipeline，GPU 建议 8，CPU 实测约 1.12x
+- GPU ASR：新增可选依赖 `video2doc[gpu]`，自动加载 `site-packages/nvidia/*/bin` 的 CUDA 12 运行库；`device = "auto"` 优先 CUDA，初始化失败自动回退 CPU/int8
+- 原生 hotwords：faster-whisper 1.2+ 同时使用 native `hotwords` 和 `initial_prompt`，产品名/缩写更稳；实测 turbo 上 EgoLite/EgoBrowser 不再被听成 eaglelite/eaglebrowser
+- `large-v3-turbo` 验证：GPU 上 15.5s / 16.8x，字符相似度 97.1%；仍保留 `large-v3` 默认，turbo 作为速度选项
 
 ### 修正
 
