@@ -15,6 +15,7 @@
 - 写作断点续跑：每写完一节落盘到 `cache/write_sections.json`，LLM 中途失败后重跑不会重写已完成的节；整篇成功收尾后自动清理
 - OCR 并行与断点续跑：`ocr.workers` 默认 4 线程（RapidOCR，CPU 上约 1.5x）；每帧结果写入 `cache/ocr_frames.json`，中途失败后不重做已完成帧
 - 渲染体积可调：新增 `render.image_width` / `render.image_quality`；`v2doc eval --all` 自动跳过 `_` / `.` 开头的备份目录
+- ASR 可选批处理：新增 `asr.batch_size`（默认 1）；`>1` 时走 faster-whisper 的 batched pipeline，GPU 建议 8，CPU 实测约 1.12x
 
 ### 修正
 

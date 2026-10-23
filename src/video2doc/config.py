@@ -60,6 +60,8 @@ class ASRConfig(Section):
     compute_type: str = "auto"  # auto | float16 | int8 | int8_float16
     vad: bool = True
     beam_size: int = 5
+    # >1 时启用 faster-whisper 的 batched pipeline；GPU 上建议 8，CPU 上收益有限
+    batch_size: int = 1
 
     # openai 兼容服务专用
     base_url: str = "https://api.openai.com/v1"

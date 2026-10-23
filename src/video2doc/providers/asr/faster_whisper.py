@@ -38,25 +38,41 @@ class FasterWhisperProvider(ASRProvider):
         device = _pick_device(self.config.device)
         compute_type = _pick_compute(device, self.config.compute_type)
         if progress:
-            progress(
-                f"加载 {self.config.model}（{device}/{compute_type}），首次运行会下载模型…"
-            )
+            progress(f"加载 {self.config.model}（{device}/{compute_type}），首次运行会下载模型…")
 
         model = _load_model(WhisperModel, self.config.model, device, compute_type)
         prompt = build_initial_prompt(hotwords, language, initial_prompt)
 
         if progress:
             progress("识别中…")
-        segments, info = model.transcribe(
-            _audio_input(audio),
-            language=language or None,
-            initial_prompt=prompt,
-            beam_size=max(1, self.config.beam_size),
-            vad_filter=self.config.vad,
-            vad_parameters={"min_silence_duration_ms": 500} if self.config.vad else None,
-            condition_on_previous_text=False,  # 减少长视频里的复读机现象
-            word_timestamps=False,
-        )
+        audio_input = _audio_input(audio)
+        options = {
+            "language": language or None,
+            "initial_prompt": prompt,
+            "beam_size": max(1, self.config.beam_size),
+            "vad_filter": self.config.vad,
+            "vad_parameters": {"min_silence_duration_ms": 500} if self.config.vad else None,
+            "condition_on_previous_text": False,  # 减少长视频里的复读机现象
+            "word_timestamps": False,
+        }
+        batch_size = max(1, self.config.batch_size)
+        if batch_size > 1:
+            try:
+                from faster_whisper import BatchedInferencePipeline
+
+                runner = BatchedInferencePipeline(model)
+                segments, info = runner.transcribe(
+                    audio_input,
+                    batch_size=batch_size,
+                    without_timestamps=False,
+                    **options,
+                )
+            except (ImportError, AttributeError, TypeError):
+                if progress:
+                    progress("当前 faster-whisper 不支持批处理，回退单路识别…")
+                segments, info = model.transcribe(audio_input, **options)
+        else:
+            segments, info = model.transcribe(audio_input, **options)
 
         utterances: list[Utterance] = []
         total = getattr(info, "duration", 0) or 0
