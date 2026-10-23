@@ -19,10 +19,14 @@ class RapidOCRProvider(OCRProvider):
     name = "rapidocr"
     label = "RapidOCR（ONNX，轻量）"
     requires_module = "rapidocr_onnxruntime"
+    parallel_safe = True
 
     def __init__(self, config) -> None:  # noqa: ANN001 - 与基类保持一致
         super().__init__(config)
         self._engine: Any = None
+
+    def warmup(self) -> None:
+        self._engine_instance()
 
     def read(self, image: Path) -> list[TextBlock]:
         engine = self._engine_instance()

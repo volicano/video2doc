@@ -16,9 +16,15 @@ class OCRProvider(ABC):
     name: str = ""
     label: str = ""
     requires_module: str | None = None
+    # 引擎能否在多线程里共享同一个实例；不能就别并行
+    parallel_safe: bool = False
 
     def __init__(self, config: OCRConfig) -> None:
         self.config = config
+
+    def warmup(self) -> None:
+        """并行前在主线程里加载模型，避免多个线程同时初始化。"""
+        return None
 
     @abstractmethod
     def read(self, image: Path) -> list[TextBlock]:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 from pathlib import Path
 
+import pytest
 from rich.console import Console
 
 from video2doc.config import Config, OCRConfig
@@ -50,27 +51,29 @@ class FakeProvider(ocr_base.OCRProvider):
         ]
 
 
-def _job(job_dir: Path) -> Job:
+def _job(job_dir: Path, count: int = 1) -> Job:
     selection = FrameSelection(
         strategy="info-density",
         interval=1.0,
-        sampled=10,
-        shots=2,
-        duration=10.0,
+        sampled=count,
+        shots=count,
+        duration=float(count * 5),
         frames=[
             FrameCandidate(
-                index=1,
-                time=2.0,
-                path="frames/f1.jpg",
-                shot_start=0.0,
-                shot_end=5.0,
+                index=index,
+                time=float((index - 1) * 5 + 2),
+                path=f"frames/f{index}.jpg",
+                shot_start=float((index - 1) * 5),
+                shot_end=float(index * 5),
                 kind="slide",
             )
+            for index in range(1, count + 1)
         ],
     )
     (job_dir / "stages").mkdir(parents=True)
     (job_dir / "frames").mkdir()
-    (job_dir / "frames" / "f1.jpg").write_bytes(b"not really a jpeg")
+    for index in range(1, count + 1):
+        (job_dir / "frames" / f"f{index}.jpg").write_bytes(b"not really a jpeg")
     (job_dir / "stages" / "frames.json").write_text(
         selection.model_dump_json(indent=2), encoding="utf-8"
     )
@@ -101,6 +104,79 @@ def test_stage_filters_low_confidence(monkeypatch, tmp_path: Path) -> None:
     assert result.frames[0].char_count == 7
     assert result.frames[0].mean_confidence == 0.9
     assert result.frames[0].blocks[0].text == "keep me"
+
+
+class FlakyProvider(ocr_base.OCRProvider):
+    name = "fake"
+    label = "fake"
+    calls = 0
+
+    def read(self, image: Path) -> list[TextBlock]:
+        type(self).calls += 1
+        if type(self).calls == 2:
+            raise RuntimeError("boom")
+        return [TextBlock(text=image.name, confidence=0.9)]
+
+
+class CountingProvider(ocr_base.OCRProvider):
+    name = "fake"
+    label = "fake"
+    calls = 0
+
+    def read(self, image: Path) -> list[TextBlock]:
+        type(self).calls += 1
+        return [TextBlock(text=image.name, confidence=0.9)]
+
+
+class ParallelProvider(CountingProvider):
+    parallel_safe = True
+
+
+def test_stage_reuses_ocr_checkpoint_after_failure(monkeypatch, tmp_path: Path) -> None:
+    from video2doc.stages.ocr import OCRStage
+
+    FlakyProvider.calls = 0
+    CountingProvider.calls = 0
+    monkeypatch.setitem(ocr_base._REGISTRY, "fake", FlakyProvider)
+    ctx = Context(
+        _job(tmp_path, count=2),
+        tmp_path,
+        Config(ocr=OCRConfig(provider="fake")),
+        Console(file=io.StringIO()),
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        OCRStage().run(ctx)
+
+    checkpoint = tmp_path / "cache" / "ocr_frames.json"
+    assert checkpoint.exists()
+
+    monkeypatch.setitem(ocr_base._REGISTRY, "fake", CountingProvider)
+    result = OCRStage().run(ctx)
+
+    assert CountingProvider.calls == 1
+    assert [frame.index for frame in result.frames] == [1, 2]
+    assert result.frames[1].text == "f2.jpg"
+    assert not checkpoint.exists()
+
+
+def test_stage_parallel_keeps_frame_order(monkeypatch, tmp_path: Path) -> None:
+    from video2doc.stages.ocr import OCRStage
+
+    ParallelProvider.calls = 0
+    monkeypatch.setitem(ocr_base._REGISTRY, "fake", ParallelProvider)
+    ctx = Context(
+        _job(tmp_path, count=4),
+        tmp_path,
+        Config(ocr=OCRConfig(provider="fake", workers=4)),
+        Console(file=io.StringIO()),
+    )
+
+    result = OCRStage().run(ctx)
+
+    assert ParallelProvider.calls == 4
+    assert [frame.index for frame in result.frames] == [1, 2, 3, 4]
+    assert [frame.text for frame in result.frames] == ["f1.jpg", "f2.jpg", "f3.jpg", "f4.jpg"]
 
 
 def test_stage_skips_without_engine(monkeypatch, tmp_path: Path) -> None:

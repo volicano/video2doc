@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Callable
 from pathlib import Path
@@ -18,6 +17,7 @@ from ..schema import (
     VisualMoment,
     WrittenSection,
 )
+from ..utils.checkpoint import discard, load_entries, save_entries
 from ..utils.code import code_block_markdown
 from ..utils.common import fingerprint, hms
 from ..utils.markdown import demote_h1, drop_leading_title
@@ -114,7 +114,7 @@ def write_document(
 ) -> Document:
     buckets = assign_moments(segmentation.sections, moments)
     sections: list[WrittenSection] = []
-    saved = _load_checkpoint(checkpoint)
+    saved = load_entries(checkpoint)
     base_key = {
         "version": cache_version,
         "system": WRITE_SYSTEM,
@@ -152,10 +152,10 @@ def write_document(
         )
         sections.append(written)
         saved[str(section.index)] = {"key": key, "data": written.model_dump(mode="json")}
-        _save_checkpoint(checkpoint, saved)
+        save_entries(checkpoint, saved)
 
     intro_title, intro = _write_intro(sections, provider, title, transcript, language, progress)
-    _discard_checkpoint(checkpoint)
+    discard(checkpoint)
     images = sum(len(section.images) for section in sections)
     return Document(
         title=intro_title or title,
@@ -187,42 +187,6 @@ def _section_key(
             "moments": [moment.model_dump(mode="json") for moment in moments],
         }
     )
-
-
-def _load_checkpoint(path: Path | None) -> dict[str, dict]:
-    if path is None:
-        return {}
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    sections = payload.get("sections") if isinstance(payload, dict) else None
-    if not isinstance(sections, dict):
-        return {}
-    return {str(key): value for key, value in sections.items() if isinstance(value, dict)}
-
-
-def _save_checkpoint(path: Path | None, sections: dict[str, dict]) -> None:
-    if path is None:
-        return
-    payload = {"version": 1, "sections": sections}
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temp = path.with_suffix(path.suffix + ".tmp")
-        temp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-        temp.replace(path)
-    except OSError:
-        # 检查点只是加速恢复，写不进去不该影响正文
-        return
-
-
-def _discard_checkpoint(path: Path | None) -> None:
-    if path is None:
-        return
-    try:
-        path.unlink(missing_ok=True)
-    except OSError:
-        return
 
 
 def sanitize_markdown(markdown: str, image_count: int) -> str:

@@ -84,6 +84,8 @@ class OCRConfig(Section):
     language: str = "ch"
     # 低于这个置信度的文字块直接丢掉，避免把噪声当内容
     min_confidence: float = 0.5
+    # 并行识别的帧数；0 / 1 = 串行。RapidOCR 的 ONNX 推理可并行，CPU 上约 1.5x
+    workers: int = 4
 
 
 class FramesConfig(Section):
