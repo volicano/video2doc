@@ -18,7 +18,7 @@ from ..schema import (
     Transcript,
     VisualMoment,
 )
-from ..utils.code import looks_like_code
+from ..utils.code import has_code_frame
 from ..utils.common import hms
 from ..utils.markdown import drop_leading_title
 from .materials import assign_moments, build_material, count_chars, section_text
@@ -171,8 +171,8 @@ def check(
 
 
 def _looks_like_code(section, ocr_by_image: dict[str, str]) -> bool:
-    """逐张判断：多张图各带两个括号不该累计成「有代码」。"""
-    return any(looks_like_code(ocr_by_image.get(ref.image, "")) for ref in section.images)
+    """逐张判断：只有能从画面里抽出可用代码时，才要求正文必须有代码块。"""
+    return any(has_code_frame(ocr_by_image.get(ref.image, "")) for ref in section.images)
 
 
 def _rewrite(

@@ -23,10 +23,12 @@ class FakeLLM:
         self.intro_title = intro_title
         self.calls = 0
         self.images: list[int] = []
+        self.prompts: list[str] = []
         self.config = SimpleNamespace(model="fake")
 
     def complete_json(self, system: str, user: str, *, progress=None) -> dict:
         self.calls += 1
+        self.prompts.append(user)
         if "导语" in system:
             payload = {"intro": self.intro}
             if self.intro_title:
@@ -218,6 +220,30 @@ def test_write_section_backfills_code_block() -> None:
     assert "```js" in written.markdown
     assert "const task" in written.markdown
     assert written.markdown.count("> 代码为画面识别结果") == 1
+
+
+def test_write_section_includes_cleaned_code_in_prompt() -> None:
+    section = two_sections().sections[0]
+    code_moment = moment(1, 10, 20)
+    code_moment.ocr_text = (
+        "ego-browser nodejs<<'EOF'\n"
+        "const task = await useOrCreateTaskSpace('search');\n"
+        "await openOrReuseTab('https://github.com/issues');\n"
+        "EOF"
+    )
+    llm = FakeLLM(lambda call: {"summary": "", "markdown": "正文。"})
+
+    write_section(
+        section,
+        make_transcript().utterances,
+        [code_moment],
+        llm,
+        WriteConfig(max_images_per_section=1),
+        language="zh",
+    )
+
+    assert "识别到的代码片段" in llm.prompts[0]
+    assert "const task = await useOrCreateTaskSpace" in llm.prompts[0]
 
 
 # -------------------------------------------------------------- 清洗 Markdown

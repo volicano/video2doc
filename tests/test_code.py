@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from video2doc.utils.code import code_block_markdown, extract_code_block, looks_like_code
+from video2doc.utils.code import (
+    code_block_markdown,
+    extract_code_block,
+    has_code_frame,
+    looks_like_code,
+)
 
 NOISY_CODE = """bilibili
 oil欧呦
@@ -29,6 +34,16 @@ Wed 0ctober28,2020
 Simple calendar widget.
 Calendar 已安装
 作者：Liam Cain
+fix:support Windows publishing and cross-platform valida...
+ttps://github.com/oil-oil/video-publisher-skil/blob/main/readme.svg
+"""
+
+OBSIDIAN_SEARCH_RESULTS = """title:Thread by@karpathy-LLMKnowledgeBases
+type:source
+raw_file:"Raw/Threadby@karpathy.md"
+title:AndrejKarpathyJust10x'dEveryone'sClaudeCode
+type:source
+raw_file:"Raw/AndrejKarpathy.md"
 """
 
 OBSIDIAN_JOURNAL = """tags:
@@ -59,14 +74,28 @@ def test_extract_code_returns_empty_for_plain_ui() -> None:
     assert extract_code_block("bilibili\n首页\n推荐\n设置") == ""
 
 
+def test_has_code_frame_needs_real_syntax() -> None:
+    assert has_code_frame("function outer() { return () => {}; }")
+    assert has_code_frame(NOISY_CODE)
+    assert not has_code_frame(OBSIDIAN_JOURNAL)
+    assert not has_code_frame("ego-browser nodejs<<'EOF'\nconst task\nEOF")
+    assert not has_code_frame(OBSIDIAN_TASKS)
+
+
+def test_extract_code_block_drops_short_fragments() -> None:
+    assert extract_code_block("ego-browser nodejs<<'EOF'\nconst task\nEOF") == ""
+    assert extract_code_block("const task = await run();\nreturn task;") != ""
+
+
 def test_looks_like_code_ignores_paren_heavy_ui() -> None:
     assert not looks_like_code("点击这里（设置）然后继续")
     assert looks_like_code("const task = await run();")
 
 
-def test_looks_like_code_ignores_obsidian_ui_and_templates() -> None:
+def test_looks_like_code_handles_obsidian_ui_and_frontmatter() -> None:
     assert not looks_like_code(OBSIDIAN_PLUGIN_UI)
-    assert not looks_like_code(OBSIDIAN_JOURNAL)
+    assert not looks_like_code(OBSIDIAN_SEARCH_RESULTS)
+    assert looks_like_code(OBSIDIAN_JOURNAL)
     assert not looks_like_code(OBSIDIAN_TASKS)
 
 

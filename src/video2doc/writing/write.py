@@ -62,6 +62,7 @@ def write_section(
         images=material.prompt_images,
         transcript=material.text,
         language=language,
+        code_blocks=material.code_blocks,
     )
     if hint.strip():
         user += f"\n\n额外要求（优先满足）：{hint.strip()}"

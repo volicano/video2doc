@@ -29,6 +29,7 @@ _OP_RE = re.compile(r"(?:=>|===|!==|::|&&|\|\||\+=|-=|->|:=)")
 _ASSIGN_RE = re.compile(r"(?<![=!<>])=(?!=|>)")
 _PUNCT_ONLY_RE = re.compile(r"^[{}();=]+$")
 _CALL_RE = re.compile(r"^[a-z_$][\w$.]*\s*\(.*\)\s*[;,]?$")
+_YAML_KEY_RE = re.compile(r"^\s*[A-Za-z_][\w-]*\s*:\s*")
 _HEREDOC_RE = re.compile(r"<<-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?")
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 _STRUCT_RE = re.compile(r"[{}();=]")
@@ -47,6 +48,8 @@ def looks_like_code(text: str) -> bool:
         return True
 
     lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if _is_yaml_frame(lines):
+        return True
     strong = [line for line in lines if _strong_code_line(line)]
     if strong:
         return True
@@ -56,11 +59,25 @@ def looks_like_code(text: str) -> bool:
     return len(codeish) >= 3 and len(codeish) >= len(lines) / 2
 
 
+def has_code_frame(text: str) -> bool:
+    """是否有「值得要求正文还原代码」的画面。
+
+    比 :func:`looks_like_code` 再严一点：半行 OCR 片段（例如 ``const task``）
+    不算，除非它是带括号/分号的完整单行代码。
+    """
+    if extract_code_block(text):
+        return True
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    strong = [line for line in lines if _strong_code_line(line)]
+    return any(_STRUCT_RE.search(line) or _OP_RE.search(line) for line in strong)
+
+
 def extract_code_block(text: str) -> str:
     """从一帧 OCR 里尽量抽出一段代码；抽不出就返回空串。
 
     优先找 heredoc（代码教程里很常见）：``bash <<'EOF' ... EOF``。
     OCR 会把侧边栏文字混进代码行，所以只保留带代码特征的行走。
+    太短、太碎的片段直接丢掉，避免拿 ``const task`` 这种半行去污染正文。
     """
     lines = [line.rstrip() for line in text.splitlines() if line.strip()]
     if not lines:
@@ -81,18 +98,37 @@ def extract_code_block(text: str) -> str:
         if body:
             heredocs.append("\n".join(body))
     if heredocs:
-        return max(heredocs, key=len)
+        best = max(heredocs, key=len)
+        return best if _is_useful_code(best) else ""
 
     # 没有 heredoc 时，退化成「挑出带代码符号的行」
     body = [line.strip() for line in lines if _code_line(line)]
     if len(body) < 2:
         return ""
-    return "\n".join(body)
+    block = "\n".join(body)
+    return block if _is_useful_code(block) else ""
 
 
 def code_block_markdown(code: str) -> str:
     language = _guess_language(code)
     return f"```{language}\n{code.strip()}\n```"
+
+
+def _is_useful_code(code: str) -> bool:
+    lines = [line for line in code.splitlines() if line.strip()]
+    if len(lines) >= 2:
+        return sum(len(line) for line in lines) >= 20
+    return bool(lines and len(lines[0]) >= 12 and re.search(r"[=;(){}]", lines[0]))
+
+
+def _is_yaml_frame(lines: list[str]) -> bool:
+    """只认一段干净的前置元数据：至少两个不同的键，排除 URL 和搜索结果重复项。"""
+    keys: list[str] = []
+    for line in lines:
+        if "://" in line or not _YAML_KEY_RE.match(line):
+            continue
+        keys.append(line.split(":", 1)[0].strip())
+    return len(keys) >= 2 and len(keys) == len(set(keys))
 
 
 def _strong_code_line(line: str) -> bool:

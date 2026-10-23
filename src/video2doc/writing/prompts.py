@@ -116,6 +116,7 @@ def write_user(
     images: list[str],
     transcript: str,
     language: str,
+    code_blocks: list[str] | None = None,
 ) -> str:
     blocks = [
         language_directive(language),
@@ -130,6 +131,15 @@ def write_user(
         blocks.extend(images)
     else:
         blocks.append("可用画面：无（这一节是纯口播）")
+    if code_blocks:
+        blocks.extend(
+            [
+                "",
+                "【识别到的代码片段】（从画面 OCR 中抽取，可能有识别错误；"
+                "优先据此还原，不要凭空补全）：",
+            ]
+        )
+        blocks.extend(f"```text\n{code}\n```" for code in code_blocks)
     blocks.extend(["", "转写文本：", transcript])
     return "\n".join(blocks)
 
