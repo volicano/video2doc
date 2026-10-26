@@ -180,6 +180,7 @@ def _check_network(config: Config) -> list[Check]:
     endpoints = [
         ("B站", "https://www.bilibili.com"),
         ("YouTube", "https://www.youtube.com"),
+        ("抖音", "https://www.douyin.com"),
     ]
     checks: list[Check] = []
     try:

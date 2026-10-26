@@ -60,7 +60,9 @@ def _root(
 
 @app.command()
 def run(
-    target: str = typer.Argument(..., help="视频链接（B站 / YouTube）或本地文件路径"),
+    target: str = typer.Argument(
+        ..., help="视频链接（B站 / YouTube / 抖音，支持分享文本）或本地文件路径"
+    ),
     out: Path = typer.Option(Path("output"), "--out", "-o", help="输出根目录"),
     job_dir: Path | None = typer.Option(None, "--job-dir", help="直接指定本次任务目录"),
     config: Path | None = typer.Option(None, "--config", "-c", help="配置文件路径"),

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import httpx
 import yt_dlp
 from pydantic import BaseModel
 from yt_dlp.utils import DownloadError
@@ -16,6 +17,13 @@ from ..schema import SourceInfo, SubtitleFile
 from ..utils.common import hms
 from ..utils.media import probe
 from ..utils.proc import ffmpeg_exe
+from ..utils.url import (
+    canonicalize_douyin_url,
+    douyin_video_id,
+    extract_url,
+    is_douyin_short_url,
+    is_douyin_url,
+)
 
 VIDEO_EXTS = {".mp4", ".mkv", ".webm", ".flv", ".mov", ".m4v", ".avi", ".ts", ".mpg", ".mpeg"}
 SUBTITLE_EXTS = {".vtt", ".srt"}
@@ -41,15 +49,16 @@ class IngestStage(Stage):
     def run(self, ctx: Context) -> BaseModel:
         target = ctx.job.target
         path = Path(target).expanduser()
+        url = extract_url(target)
 
         if path.exists() and path.is_file():
             info = _ingest_local(ctx, path)
-        elif target.lower().startswith(("http://", "https://")):
-            info = _ingest_url(ctx, target)
+        elif url:
+            info = _ingest_url(ctx, url)
         else:
             raise StageError(
                 f"找不到视频：{target}",
-                hint="传入本地视频文件路径，或 http(s) 视频链接。",
+                hint="传入本地视频文件路径、视频链接，或直接粘贴抖音分享文本。",
             )
 
         _check_duration(info, ctx.config.video.max_duration_min)
@@ -131,8 +140,66 @@ def _looks_auto(name: str) -> bool:
 # ------------------------------------------------------------------ 在线视频
 
 
+_DOUYIN_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+_DOUYIN_CANONICAL_RE = re.compile(r"https?://(?:www\.)?douyin\.com/video/\d+")
+
+
+def _resolve_douyin_url(ctx: Context, url: str) -> str:
+    """抖音分享页直接归一化；短链先跟随重定向，拿到 /video/<id>。"""
+    url = canonicalize_douyin_url(url)
+    if not is_douyin_short_url(url):
+        return url
+
+    ctx.progress("解析抖音短链…")
+    kwargs: dict = {
+        "follow_redirects": True,
+        "timeout": 15.0,
+        "headers": {"User-Agent": _DOUYIN_UA},
+    }
+    if ctx.config.network.proxy:
+        kwargs["proxy"] = ctx.config.network.proxy
+
+    try:
+        with httpx.Client(**kwargs) as client:
+            response = client.get(url)
+        final_url = str(response.url)
+        if douyin_video_id(final_url):
+            return canonicalize_douyin_url(final_url)
+        match = _DOUYIN_CANONICAL_RE.search(response.text)
+        if match:
+            return canonicalize_douyin_url(match.group(0))
+        ctx.detail("短链没有跳到视频页，继续交给 yt-dlp 处理。")
+    except (httpx.HTTPError, ValueError) as exc:
+        ctx.detail(f"短链解析失败，继续交给 yt-dlp：{exc}")
+    return url
+
+
+def _download_hint(url: str, message: str) -> str:
+    if is_douyin_url(url) or "douyin" in message.lower():
+        return (
+            "抖音通常需要浏览器 Cookie：先在配置里设置 "
+            'video.cookies_from_browser = "chrome"（或 edge / firefox），'
+            "并完全退出对应浏览器后重试。也可以先运行 "
+            "`yt-dlp --cookies-from-browser chrome <抖音链接>` 验证。"
+            "如果提示短链失效，请重新复制分享链接；地区限制则配置 network.proxy。"
+        )
+    return (
+        "常见原因：需要登录（配置 cookies_from_browser）、地区限制（配置 network.proxy）、"
+        "或链接已失效。先用 `yt-dlp -F <url>` 手动确认能否下载。"
+    )
+
+
 def _ingest_url(ctx: Context, url: str) -> SourceInfo:
     config = ctx.config
+    url = _resolve_douyin_url(ctx, url)
+    if is_douyin_url(url) and not config.video.cookies_from_browser:
+        ctx.detail(
+            "抖音通常需要浏览器 Cookie；若下载失败，请在配置里设置 "
+            'video.cookies_from_browser = "chrome"。'
+        )
     media_dir = ctx.job_dir / "media"
     media_dir.mkdir(parents=True, exist_ok=True)
 
@@ -172,13 +239,7 @@ def _ingest_url(ctx: Context, url: str) -> SourceInfo:
         with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=True)
     except DownloadError as exc:
-        raise StageError(
-            f"下载失败：{exc}",
-            hint=(
-                "常见原因：需要登录（配置 cookies_from_browser）、地区限制（配置 network.proxy）、"
-                "或链接已失效。先用 `yt-dlp -F <url>` 手动确认能否下载。"
-            ),
-        ) from exc
+        raise StageError(f"下载失败：{exc}", hint=_download_hint(url, str(exc))) from exc
 
     if not info:
         raise StageError("没有拿到视频信息", hint="检查链接是否有效。")

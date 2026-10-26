@@ -9,21 +9,28 @@ from .config import Config, config_snapshot
 from .errors import StageError
 from .schema import Job
 from .utils.common import now_iso
+from .utils.url import douyin_video_id, extract_url
 
 _BV_RE = re.compile(r"(BV[0-9A-Za-z]{10})")
 _AV_RE = re.compile(r"/av(\d+)", re.IGNORECASE)
 _YT_RE = re.compile(r"(?:[?&]v=|youtu\.be/|/shorts/|/embed/)([A-Za-z0-9_-]{11})")
+_DOUYIN_SHORT_RE = re.compile(r"v\.douyin\.com/([A-Za-z0-9_-]+)", re.IGNORECASE)
 _UNSAFE_RE = re.compile(r"[^A-Za-z0-9\u4e00-\u9fff._-]+")
 
 
 def derive_job_id(target: str) -> str:
-    """尽量用视频平台的原生 ID（BV号 / YouTube video id），可读又能复用。"""
+    """尽量用视频平台的原生 ID（BV号 / YouTube / 抖音），可读又能复用。"""
     if match := _BV_RE.search(target):
         return match.group(1)
     if match := _AV_RE.search(target):
         return f"av{match.group(1)}"
     if match := _YT_RE.search(target):
         return match.group(1)
+    if url := extract_url(target):
+        if video_id := douyin_video_id(url):
+            return video_id
+    if match := _DOUYIN_SHORT_RE.search(target):
+        return f"douyin-{match.group(1)}"
 
     path = Path(target).expanduser()
     stem = path.stem if path.suffix else target

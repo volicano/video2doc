@@ -35,7 +35,7 @@ class VideoConfig(Section):
     subtitle_langs: list[str] = Field(
         default_factory=lambda: ["zh-Hans", "zh-CN", "zh", "zh-Hant", "en"]
     )
-    # 需要登录才能看的高清/字幕，可填 chrome / edge / firefox
+    # 需要登录才能看的高清/字幕，或抖音要求的浏览器 Cookie；可填 chrome / edge / firefox
     cookies_from_browser: str | None = None
 
 
@@ -291,5 +291,5 @@ image_captions = false       # 图片下方显示 OCR 画面文字（录屏类�
 # title = "自定义教程标题"
 
 [network]
-# proxy = "http://127.0.0.1:7890"   # YouTube 直连不通时使用
+# proxy = "http://127.0.0.1:7890"   # YouTube / 抖音直连不通时使用
 """

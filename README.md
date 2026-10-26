@@ -2,7 +2,7 @@
 
 把**面试 / 教学视频**转成**带配图的图文教程**。
 
-输入一条 B 站 / YouTube 链接或本地视频，输出一份可以直接发布的学习笔记：结构化的章节、可跳回原片的时间戳、关键画面截图。
+输入一条 B 站 / YouTube / 抖音链接（抖音支持直接粘贴分享文本）或本地视频，输出一份可以直接发布的学习笔记：结构化的章节、可跳回原片的时间戳、关键画面截图。
 
 [![CI](https://github.com/volicano/video2doc/actions/workflows/ci.yml/badge.svg)](https://github.com/volicano/video2doc/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/video2doc.svg)](https://pypi.org/project/video2doc/)
@@ -89,6 +89,8 @@ v2doc init
 
 # 2. 处理一条视频（需要 LLM 的 API Key，见下文）
 v2doc run "https://www.bilibili.com/video/BVxxxxxxxxx"
+v2doc run "https://v.douyin.com/xxxx/"      # 抖音短链
+v2doc run "7.84 复制打开抖音，看看【...】 https://v.douyin.com/xxxx/"  # 分享文本也可以
 
 # 3. 打开生成的图文教程
 v2doc open output/BVxxxxxxxxx
@@ -277,7 +279,7 @@ api_key_env = ""           # 空字符串 = 不发 Authorization
 
 ```toml
 [network]
-proxy = "http://127.0.0.1:7890"     # YouTube 直连不通时
+proxy = "http://127.0.0.1:7890"     # YouTube / 抖音直连不通时
 ```
 
 需要登录才能看的视频：
@@ -286,6 +288,8 @@ proxy = "http://127.0.0.1:7890"     # YouTube 直连不通时
 [video]
 cookies_from_browser = "chrome"
 ```
+
+抖音通常要求浏览器里的新鲜 Cookie。配置后请先完全退出 Chrome / Edge，再重跑；短链和分享文本会自动展开成 `www.douyin.com/video/<id>`。遇到 `Fresh cookies` 或 `Could not copy ... cookie database` 时，先关闭浏览器。
 
 ---
 
@@ -348,6 +352,19 @@ $env:HF_ENDPOINT = "https://hf-mirror.com"   # 国内网络
 cookies_from_browser = "chrome"
 ```
 
+**抖音下载失败 / `Fresh cookies`**
+
+抖音几乎一定需要新鲜 Cookie。先完全退出浏览器，再：
+
+```toml
+[video]
+cookies_from_browser = "chrome"   # 或 edge / firefox
+```
+
+短链和分享文本会被自动展开；如果仍失败，用
+`yt-dlp --cookies-from-browser chrome "<链接>"` 单独验证。抖音连不上时同样配置
+`network.proxy`。
+
 **YouTube 连不上**
 
 ```toml
@@ -372,11 +389,12 @@ proxy = "http://127.0.0.1:7890"
 - 本地视频的标题就是文件名，想要好看点用 `[render] title = "..."` 覆盖。
 - 语音识别的时间戳有 ±0.5s 误差，对齐时留了缓冲。
 - 横屏、有稳定 PPT / 代码画面的教学视频效果最好；全程人脸口播的视频只能拿到口播文字。
+- 抖音通常需要浏览器 Cookie；短链解析依赖平台重定向，失效时请重新复制分享链接。
 - 没有任何自动发布能力，产出就是文件。
 
 ## 合规
 
-本项目仅用于个人学习与内容整理。不存储、不二次分发原始视频；请遵守 B 站 / YouTube 的服务条款与版权规定。用别人的视频做二次创作前，请确认授权。
+本项目仅用于个人学习与内容整理。不存储、不二次分发原始视频；请遵守 B 站 / YouTube / 抖音的服务条款与版权规定。用别人的视频做二次创作前，请确认授权。
 
 ## License
 
