@@ -25,7 +25,9 @@ SYSTEM_PROMPT = """\
 2. 不要合并或拆分句子，不要改动语气词。
 3. 不能确定的数字、公式、代码标识符保持原样。
 4. 优先采用给定的术语表。
-5. 只返回需要修改的句子。
+5. 人名、产品名、Bot 名是专有名词：术语表里的名字不要互相替换；
+   原文已经写了明确名字时保持原样，只有明显的同音错字才修。
+6. 只返回需要修改的句子。
 
 输出 JSON：{"items": [{"i": 句子编号, "t": "修正后的文本"}]}
 如果不需要修改，输出 {"items": []}
@@ -38,7 +40,7 @@ MAX_BATCH_CHARS = 3000
 class CorrectStage(Stage):
     name = "correct"
     title = "术语与错别字校正"
-    version = 1
+    version = 2
     requires = ("transcript",)
 
     def params(self, config: Config) -> dict:
@@ -46,7 +48,7 @@ class CorrectStage(Stage):
             "enabled": config.asr.correct_with_llm,
             "glossary": config.asr.glossary,
             "llm": config.llm.model_dump(),
-            "prompt_version": 1,
+            "prompt_version": 2,
         }
 
     def skip(self, ctx: Context) -> str | None:

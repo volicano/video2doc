@@ -101,6 +101,11 @@ def test_stage_counts_and_keeps_timestamps(monkeypatch: pytest.MonkeyPatch) -> N
     assert result.utterances[2].start == 10
 
 
+def test_prompt_protects_proper_nouns() -> None:
+    assert "专有名词" in correct_module.SYSTEM_PROMPT
+    assert "不要互相替换" in correct_module.SYSTEM_PROMPT
+
+
 def test_batching_splits_by_count() -> None:
     utterances = [Utterance(start=i, end=i + 1, text="短句") for i in range(130)]
     batches = list(_batches(utterances))
