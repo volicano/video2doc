@@ -37,6 +37,9 @@ class VideoConfig(Section):
     )
     # 需要登录才能看的高清/字幕，或抖音要求的浏览器 Cookie；可填 chrome / edge / firefox
     cookies_from_browser: str | None = None
+    # 浏览器导出的 Cookie 文件（Netscape 格式）；Chrome/Edge 应用绑定加密导致
+    # --cookies-from-browser 解密失败时，优先使用这个
+    cookies_file: str | None = None
 
 
 class ASRConfig(Section):
@@ -225,6 +228,7 @@ EXAMPLE_CONFIG = """\
 prefer_subtitles = true      # 有 CC 字幕就直接用，跳过语音识别
 max_height = 1080
 # cookies_from_browser = "chrome"   # 需要登录才能看的高清/字幕
+# cookies_file = "C:/path/to/cookies.txt"  # 浏览器导出的 Netscape Cookie 文件
 
 [asr]
 # 本地：faster-whisper（需 pip install "video2doc[local]"）

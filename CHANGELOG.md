@@ -6,7 +6,8 @@
 
 ### 新增
 
-- 抖音支持：识别 `www.douyin.com/video/<id>`、`v.douyin.com` 短链和完整分享文本；短链自动展开，任务目录使用数字 ID；下载失败时提示配置浏览器 Cookie
+- 抖音支持：识别 `www.douyin.com/video/<id>`、`v.douyin.com` 短链和完整分享文本；短链自动展开，任务目录使用数字 ID；公开视频无需登录，下载失败时提示 Cookie / 代理
+- `video.cookies_file`：支持浏览器导出的 Netscape Cookie 文件，解决新版 Chrome / Edge 应用绑定加密导致 `cookies_from_browser` 解密失败的问题
 - `v2doc eval`：不调用模型，检查成稿的时间戳、章节覆盖、配图引用、OCR 代码块、质检和 LLM 用量；支持 `--all`、`--json`、`--strict`
 - 评测基线：两条真实视频的 OCR 代码画面与正文代码块不一致、图片未引用等问题已经能被自动发现
 
@@ -24,6 +25,7 @@
 ### 修正
 
 - LLM JSON 解析改用 `raw_decode`：支持 Markdown 正文里的代码围栏、JSON 后面的尾随文本，以及未转义的 Windows 路径反斜杠
+- 抖音 API 403：内置 yt-dlp 上游 PR #17826 的 `x-secsdk-web-signature` 请求签名兼容层；yt-dlp 正式发版包含该修复后会自动跳过
 
 ## [0.1.1] - 2026-10-22
 

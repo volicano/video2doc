@@ -24,6 +24,7 @@ from ..utils.url import (
     is_douyin_short_url,
     is_douyin_url,
 )
+from ..utils.ytdlp_compat import ensure_douyin_compat
 
 VIDEO_EXTS = {".mp4", ".mkv", ".webm", ".flv", ".mov", ".m4v", ".avi", ".ts", ".mpg", ".mpeg"}
 SUBTITLE_EXTS = {".vtt", ".srt"}
@@ -42,6 +43,7 @@ class IngestStage(Stage):
             "prefer_subtitles": config.video.prefer_subtitles,
             "subtitle_langs": config.video.subtitle_langs,
             "cookies_from_browser": config.video.cookies_from_browser,
+            "cookies_file": config.video.cookies_file,
             "max_duration_min": config.video.max_duration_min,
             "proxy": config.network.proxy,
         }
@@ -180,10 +182,10 @@ def _resolve_douyin_url(ctx: Context, url: str) -> str:
 def _download_hint(url: str, message: str) -> str:
     if is_douyin_url(url) or "douyin" in message.lower():
         return (
-            "抖音通常需要浏览器 Cookie：先在配置里设置 "
+            "抖音公开视频通常无需登录；若仍提示 Fresh cookies，可配置 "
             'video.cookies_from_browser = "chrome"（或 edge / firefox），'
-            "并完全退出对应浏览器后重试。也可以先运行 "
-            "`yt-dlp --cookies-from-browser chrome <抖音链接>` 验证。"
+            "或导出 Netscape 格式 Cookie 后配置 video.cookies_file。"
+            "Chrome/Edge 新版本可能因应用绑定加密无法直接读取，此时优先用 Cookie 文件。"
             "如果提示短链失效，请重新复制分享链接；地区限制则配置 network.proxy。"
         )
     return (
@@ -195,11 +197,8 @@ def _download_hint(url: str, message: str) -> str:
 def _ingest_url(ctx: Context, url: str) -> SourceInfo:
     config = ctx.config
     url = _resolve_douyin_url(ctx, url)
-    if is_douyin_url(url) and not config.video.cookies_from_browser:
-        ctx.detail(
-            "抖音通常需要浏览器 Cookie；若下载失败，请在配置里设置 "
-            'video.cookies_from_browser = "chrome"。'
-        )
+    if is_douyin_url(url):
+        ensure_douyin_compat()
     media_dir = ctx.job_dir / "media"
     media_dir.mkdir(parents=True, exist_ok=True)
 
@@ -231,7 +230,15 @@ def _ingest_url(ctx: Context, url: str) -> SourceInfo:
     }
     if config.network.proxy:
         options["proxy"] = config.network.proxy
-    if config.video.cookies_from_browser:
+    if config.video.cookies_file:
+        cookie_path = Path(config.video.cookies_file).expanduser()
+        if not cookie_path.is_file():
+            raise StageError(
+                f"Cookie 文件不存在：{cookie_path}",
+                hint="检查 video.cookies_file，或改用 video.cookies_from_browser。",
+            )
+        options["cookiefile"] = str(cookie_path)
+    elif config.video.cookies_from_browser:
         options["cookiesfrombrowser"] = (config.video.cookies_from_browser,)
 
     ctx.progress("解析链接…")

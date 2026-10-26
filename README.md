@@ -287,9 +287,14 @@ proxy = "http://127.0.0.1:7890"     # YouTube / 抖音直连不通时
 ```toml
 [video]
 cookies_from_browser = "chrome"
+
+# 或者使用浏览器导出的 Netscape 格式 Cookie 文件
+# cookies_file = "C:/Users/me/cookies.txt"
 ```
 
-抖音通常要求浏览器里的新鲜 Cookie。配置后请先完全退出 Chrome / Edge，再重跑；短链和分享文本会自动展开成 `www.douyin.com/video/<id>`。遇到 `Fresh cookies` 或 `Could not copy ... cookie database` 时，先关闭浏览器。
+`cookies_from_browser` 配置后请先完全退出 Chrome / Edge 再重跑。新版浏览器可能启用应用绑定加密，导致 `Failed to decrypt with DPAPI`；这时用 “Get cookies.txt LOCALLY” 一类扩展导出 Cookie，改配 `cookies_file`。
+
+抖音公开视频通常无需登录；短链和分享文本会自动展开成 `www.douyin.com/video/<id>`，项目内置了当前 yt-dlp 尚未发版的签名兼容修复。遇到 `Fresh cookies` 时再配置 Cookie 或 `network.proxy`。
 
 ---
 
@@ -354,16 +359,18 @@ cookies_from_browser = "chrome"
 
 **抖音下载失败 / `Fresh cookies`**
 
-抖音几乎一定需要新鲜 Cookie。先完全退出浏览器，再：
+公开视频通常不需要登录，项目会自动给请求补上抖音要求的签名参数。如果仍失败：
 
 ```toml
 [video]
 cookies_from_browser = "chrome"   # 或 edge / firefox
+# 浏览器无法解密时改用导出的 Cookie 文件
+# cookies_file = "C:/Users/me/cookies.txt"
 ```
 
-短链和分享文本会被自动展开；如果仍失败，用
-`yt-dlp --cookies-from-browser chrome "<链接>"` 单独验证。抖音连不上时同样配置
-`network.proxy`。
+短链和分享文本会被自动展开；抖音连不上时配置 `network.proxy`。新版 Chrome / Edge
+可能报 `Failed to decrypt with DPAPI`，这是应用绑定加密导致的，优先改用
+`cookies_file`。
 
 **YouTube 连不上**
 
@@ -389,7 +396,7 @@ proxy = "http://127.0.0.1:7890"
 - 本地视频的标题就是文件名，想要好看点用 `[render] title = "..."` 覆盖。
 - 语音识别的时间戳有 ±0.5s 误差，对齐时留了缓冲。
 - 横屏、有稳定 PPT / 代码画面的教学视频效果最好；全程人脸口播的视频只能拿到口播文字。
-- 抖音通常需要浏览器 Cookie；短链解析依赖平台重定向，失效时请重新复制分享链接。
+- 抖音公开视频通常无需 Cookie；短链解析依赖平台重定向，失效时请重新复制分享链接。
 - 没有任何自动发布能力，产出就是文件。
 
 ## 合规
