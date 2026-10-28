@@ -12,7 +12,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from .errors import ConfigError
 
@@ -130,6 +130,17 @@ class WriteConfig(Section):
     # 质检发现严重问题时，让 LLM 针对性地重写那一节（额外花费）
     review: bool = False
     max_rewrites: int = 3
+
+    @model_validator(mode="after")
+    def _validate_chunks(self) -> WriteConfig:
+        if self.chunk_utterances <= 0:
+            raise ValueError("write.chunk_utterances 必须大于 0")
+        if self.chunk_overlap < 0:
+            raise ValueError("write.chunk_overlap 不能为负数")
+        # 重叠超过窗口的一半时，步长会小到产生大量重复请求，长视频容易失控。
+        if self.chunk_overlap > self.chunk_utterances // 2:
+            raise ValueError("write.chunk_overlap 不能超过 write.chunk_utterances 的一半")
+        return self
 
 
 class RenderConfig(Section):

@@ -149,13 +149,9 @@ def test_regenerate_section_updates_only_target_and_persists(tmp_path, monkeypat
     monkeypatch.setattr("video2doc.revision.make_llm", lambda cfg, temp=None: fake)
 
     folded: list[int] = []
-    monkeypatch.setattr(
-        "video2doc.revision.fold_usage", lambda usage: folded.append(usage.calls)
-    )
+    monkeypatch.setattr("video2doc.revision.fold_usage", lambda usage: folded.append(usage.calls))
 
-    revision = regenerate_section(
-        job, job_dir, Config(), section_index=2, hint="重点是任务接管"
-    )
+    revision = regenerate_section(job, job_dir, Config(), section_index=2, hint="重点是任务接管")
 
     assert revision.section.index == 2
     assert revision.section.title == "新的第二节"

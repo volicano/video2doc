@@ -19,7 +19,7 @@ from .config import EXAMPLE_CONFIG, Config, load_config
 from .doctor import run_doctor
 from .errors import StageError, Video2DocError
 from .evaluate import EvalReport, evaluate_job
-from .job import derive_job_id, job_dir_for, open_job
+from .job import derive_job_id, job_dir_for, open_job, read_job
 from .pipeline import Pipeline
 from .providers.asr import available_providers
 from .providers.llm import available_providers as llm_available_providers
@@ -29,6 +29,8 @@ from .revision import regenerate_section
 from .schema import FrameSelection, Job, OCRResult, Transcript, UsageStats
 from .stages import default_stages
 from .utils.common import hms
+from .utils.files import atomic_write_text
+from .utils.models import load_model
 from .writing import llm_unavailable
 
 app = typer.Typer(
@@ -90,15 +92,15 @@ def resume(
     force: bool = typer.Option(False, "--force", help="忽略缓存，全部重跑"),
 ) -> None:
     """继续一个未完成或需要重跑的任务。"""
-    job_path = job_dir / "job.json"
-    if not job_path.exists():
-        console.print(f"[red]找不到任务文件：{job_path}[/]")
-        raise typer.Exit(1)
-
     try:
-        old = Job.model_validate_json(job_path.read_text(encoding="utf-8"))
+        old = read_job(job_dir)
         cfg = load_config(config)
-        job, created = open_job(job_dir, old.target, cfg)
+        job, created = open_job(
+            job_dir,
+            old.target,
+            cfg,
+            identity=old.target_identity or None,
+        )
     except Video2DocError as exc:
         exc.render(console)
         raise typer.Exit(1) from None
@@ -119,7 +121,7 @@ def rewrite(
 ) -> None:
     """只重写某一节，然后重跑质检和渲染。其余章节不动。"""
     try:
-        job = _read_job(job_dir)
+        job = read_job(job_dir)
         cfg = load_config(config)
     except Video2DocError as exc:
         exc.render(console)
@@ -172,7 +174,7 @@ def render(
 ) -> None:
     """应用 overrides.json 重新生成教程，不调用模型。"""
     try:
-        job = _read_job(job_dir)
+        job = read_job(job_dir)
         cfg = load_config(config)
     except Video2DocError as exc:
         exc.render(console)
@@ -669,7 +671,11 @@ def preview(
     export: Path | None = typer.Option(None, "--export", help="导出为带时间戳的纯文本"),
 ) -> None:
     """查看（或导出）已生成的转写文本。"""
-    transcript = _load_transcript(job_dir)
+    try:
+        transcript = _load_transcript(job_dir)
+    except Video2DocError as exc:
+        exc.render(console)
+        raise typer.Exit(1) from None
     utterances = transcript.utterances
     if limit > 0:
         utterances = utterances[:limit]
@@ -684,7 +690,11 @@ def preview(
 
     if export:
         lines = [f"[{hms(u.start)}] {u.text}" for u in transcript.utterances]
-        export.write_text("\n".join(lines), encoding="utf-8")
+        try:
+            atomic_write_text(export, "\n".join(lines))
+        except OSError as exc:
+            console.print(f"[red]无法导出到 {export}：{exc}[/]")
+            raise typer.Exit(1) from None
         console.print(f"\n[green]已导出[/] {export}")
 
 
@@ -695,7 +705,11 @@ def frames(
     open_preview: bool = typer.Option(False, "--open", help="用浏览器打开 preview.html"),
 ) -> None:
     """查看抽帧结果（时间、类型、画面文字）。"""
-    selection = _load_stage(job_dir, "frames", FrameSelection)
+    try:
+        selection = _load_stage(job_dir, "frames", FrameSelection)
+    except Video2DocError as exc:
+        exc.render(console)
+        raise typer.Exit(1) from None
     ocr_chars: dict[int, int] = {}
     try:
         ocr = _load_stage(job_dir, "ocr", OCRResult)
@@ -763,7 +777,11 @@ def init(
     if path.exists() and not force:
         console.print(f"[yellow]{path} 已存在，加 --force 覆盖。[/]")
         raise typer.Exit(1)
-    path.write_text(EXAMPLE_CONFIG, encoding="utf-8")
+    try:
+        atomic_write_text(path, EXAMPLE_CONFIG)
+    except OSError as exc:
+        console.print(f"[red]无法写入 {path}：{exc}[/]")
+        raise typer.Exit(1) from None
     console.print(f"[green]已写入[/] {path}")
 
 
@@ -796,16 +814,16 @@ def _run_job(
     from_stage: str | None,
 ) -> tuple[bool, str]:
     """跑完一个任务。返回 (是否成功, 失败原因)，不抛退出码，方便 batch 复用。"""
-    pipeline = Pipeline(
-        default_stages(),
-        job,
-        job_dir,
-        cfg,
-        console,
-        force=force,
-        start_at=from_stage,
-    )
     try:
+        pipeline = Pipeline(
+            default_stages(),
+            job,
+            job_dir,
+            cfg,
+            console,
+            force=force,
+            start_at=from_stage,
+        )
         job = pipeline.run()
     except Video2DocError as exc:
         console.print()
@@ -876,7 +894,7 @@ def _print_summary(job: Job, job_dir: Path) -> None:
 
 
 def _load_transcript(job_dir: Path) -> Transcript:
-    job = _read_job(job_dir)
+    job = read_job(job_dir)
     record = None
     for name in ("correct", "transcript"):
         candidate = job.stages.get(name)
@@ -884,36 +902,32 @@ def _load_transcript(job_dir: Path) -> Transcript:
             record = candidate
             break
     if record is None:
-        console.print("[red]还没有转写结果，先运行 v2doc run。[/]")
-        raise typer.Exit(1)
+        raise StageError(
+            "还没有转写结果",
+            hint="先运行 v2doc run，等 transcript 阶段完成。",
+        )
 
     path = job_dir / record.output
     if not path.exists():
-        console.print(f"[red]转写文件丢失：{path}[/]")
-        raise typer.Exit(1)
-    return Transcript.model_validate_json(path.read_text(encoding="utf-8"))
+        raise StageError(
+            f"转写文件丢失：{path}",
+            hint="加上 --force 从头重跑。",
+        )
+    return load_model(path, Transcript, label="转写文件")
 
 
 _T = TypeVar("_T", bound=BaseModel)
 
 
-def _read_job(job_dir: Path) -> Job:
-    job_path = job_dir / "job.json"
-    if not job_path.exists():
-        console.print(f"[red]找不到任务文件：{job_path}[/]")
-        raise typer.Exit(1)
-    return Job.model_validate_json(job_path.read_text(encoding="utf-8"))
-
-
 def _load_stage(job_dir: Path, name: str, model: type[_T]) -> _T:
-    job = _read_job(job_dir)
+    job = read_job(job_dir)
     record = job.stages.get(name)
     if record is None or record.status != "done" or not record.output:
         raise StageError(f"还没有 {name} 阶段的产物", hint="先运行 v2doc run。")
     path = job_dir / record.output
     if not path.exists():
         raise StageError(f"产物文件丢失：{path}", hint="加上 --force 重跑。")
-    return model.model_validate_json(path.read_text(encoding="utf-8"))
+    return load_model(path, model, label=f"{name} 阶段产物")
 
 
 def _ensure_utf8() -> None:

@@ -53,9 +53,7 @@ class TranscriptStage(Stage):
                 ctx.detail("字幕文件解析为空，回退到语音识别。")
 
         audio = self._require_audio(ctx)
-        hotwords = resolve_hotwords(
-            ctx.config.asr.hotwords, ctx.config.asr.auto_hotwords, source
-        )
+        hotwords = resolve_hotwords(ctx.config.asr.hotwords, ctx.config.asr.auto_hotwords, source)
         if hotwords:
             ctx.detail("热词：" + "、".join(hotwords[:12]) + ("…" if len(hotwords) > 12 else ""))
 

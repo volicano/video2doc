@@ -25,6 +25,7 @@ from rich.markup import escape
 
 from ..config import Config
 from ..errors import StageError, Video2DocError
+from ..job import read_job
 from ..overrides import (
     OVERRIDES_NAME,
     Overrides,
@@ -39,6 +40,7 @@ from ..revision import regenerate_section
 from ..schema import Document, ImageRef, Job, SourceInfo
 from ..stages import CritiqueStage, RenderStage
 from ..utils.common import hms
+from ..utils.models import load_model
 from ..writing import llm_unavailable
 
 COOKIE_NAME = "v2doc_review"
@@ -110,7 +112,7 @@ class ReviewApp:
     # ------------------------------------------------------------------ 数据
 
     def _check_ready(self) -> None:
-        job = _load_job(self.job_dir)
+        job = read_job(self.job_dir)
         record = job.stages.get("write")
         if record is None or record.status != "done" or not record.output:
             raise StageError(
@@ -128,7 +130,7 @@ class ReviewApp:
             return self._state()
 
     def _state(self) -> dict[str, Any]:
-        job = _load_job(self.job_dir)
+        job = read_job(self.job_dir)
         document = _load_document(job, self.job_dir)
         overrides = load_overrides(self.job_dir) or Overrides()
         effective, warnings = apply_overrides(document, overrides)
@@ -192,7 +194,7 @@ class ReviewApp:
 
     def save(self, payload: dict[str, Any]) -> dict[str, Any]:
         with self.lock:
-            job = _load_job(self.job_dir)
+            job = read_job(self.job_dir)
             base = _load_document(job, self.job_dir)
             overrides = _diff_overrides(base, payload)
             path = self.job_dir / OVERRIDES_NAME
@@ -218,7 +220,7 @@ class ReviewApp:
 
         hint = str(payload.get("hint") or "").strip()
         with self.lock:
-            job = _load_job(self.job_dir)
+            job = read_job(self.job_dir)
             revision = regenerate_section(
                 job, self.job_dir, self.config, section_index=section, hint=hint
             )
@@ -236,7 +238,7 @@ class ReviewApp:
         return state
 
     def preview(self, payload: dict[str, Any]) -> dict[str, Any]:
-        job = _load_job(self.job_dir)
+        job = read_job(self.job_dir)
         document = _load_document(job, self.job_dir)
         known = _image_index(document)
         refs: list[ImageRef] = []
@@ -258,7 +260,7 @@ class ReviewApp:
         return {"html": html}
 
     def _render(self, *, critique: bool = False) -> dict[str, Any]:
-        job = _load_job(self.job_dir)
+        job = read_job(self.job_dir)
         buffer = io.StringIO()
         quiet = Console(file=buffer, width=110, force_terminal=False, color_system=None)
         # 只跑渲染（重写时顺带重跑一次质检），不碰前面那些昂贵的阶段
@@ -470,13 +472,6 @@ class _Handler(BaseHTTPRequestHandler):
 # ------------------------------------------------------------------ 数据工具
 
 
-def _load_job(job_dir: Path) -> Job:
-    path = job_dir / "job.json"
-    if not path.exists():
-        raise StageError(f"找不到任务文件：{path}", hint="检查任务目录是否正确。")
-    return Job.model_validate_json(path.read_text(encoding="utf-8"))
-
-
 def _load_document(job: Job, job_dir: Path) -> Document:
     record = job.stages.get("write")
     if record is None or record.status != "done" or not record.output:
@@ -484,7 +479,12 @@ def _load_document(job: Job, job_dir: Path) -> Document:
     path = job_dir / record.output
     if not path.exists():
         raise StageError(f"正文文件丢失：{path}", hint="加上 --from write 重新生成。")
-    return Document.model_validate_json(path.read_text(encoding="utf-8"))
+    return load_model(
+        path,
+        Document,
+        label="正文文件",
+        hint="正文 JSON 可能已损坏；加上 --from write 重新生成。",
+    )
 
 
 def _load_optional(job: Job, job_dir: Path, name: str, model: type[Any]) -> Any:
@@ -494,7 +494,11 @@ def _load_optional(job: Job, job_dir: Path, name: str, model: type[Any]) -> Any:
     path = job_dir / record.output
     if not path.exists():
         return None
-    return model.model_validate_json(path.read_text(encoding="utf-8"))
+    try:
+        return load_model(path, model, label=f"{name} 阶段产物")
+    except StageError:
+        # 可选的调试/元数据坏掉不应该让整个校对界面打不开。
+        return None
 
 
 def _image_payload(ref: ImageRef) -> dict[str, Any]:

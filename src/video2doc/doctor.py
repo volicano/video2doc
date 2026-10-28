@@ -195,9 +195,7 @@ def _check_network(config: Config) -> list[Check]:
     for name, url in endpoints:
         try:
             response = httpx.head(url, **kwargs)
-            checks.append(
-                Check(f"网络 · {name}", "ok", f"HTTP {response.status_code}")
-            )
+            checks.append(Check(f"网络 · {name}", "ok", f"HTTP {response.status_code}"))
         except Exception as exc:  # noqa: BLE001
             checks.append(
                 Check(

@@ -85,9 +85,7 @@ def test_section_title_and_markdown_override() -> None:
 
 
 def test_images_can_be_reordered_and_matched_by_basename() -> None:
-    overrides = Overrides(
-        sections={1: SectionOverride(images=["b.jpg", "frames/a.jpg"])}
-    )
+    overrides = Overrides(sections={1: SectionOverride(images=["b.jpg", "frames/a.jpg"])})
     updated, warnings = apply_overrides(sample(), overrides)
 
     refs = updated.sections[0].images

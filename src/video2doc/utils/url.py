@@ -33,17 +33,17 @@ def _is_douyin_host(host: str) -> bool:
 
 
 def is_douyin_url(url: str) -> bool:
-    return _is_douyin_host(urlparse(url).netloc)
+    return _is_douyin_host(urlparse(url).hostname or "")
 
 
 def is_douyin_short_url(url: str) -> bool:
-    return urlparse(url).netloc.lower() == "v.douyin.com"
+    return (urlparse(url).hostname or "").lower() == "v.douyin.com"
 
 
 def douyin_video_id(url: str) -> str | None:
     """取抖音长链或分享页里的视频 ID；短链需要先解析重定向。"""
     parsed = urlparse(url)
-    if not _is_douyin_host(parsed.netloc):
+    if not _is_douyin_host(parsed.hostname or ""):
         return None
     match = _DOUYIN_VIDEO_RE.search(parsed.path) or _DOUYIN_SHARE_RE.search(parsed.path)
     if match:

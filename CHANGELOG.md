@@ -21,6 +21,11 @@
 - GPU ASR：新增可选依赖 `video2doc[gpu]`，自动加载 `site-packages/nvidia/*/bin` 的 CUDA 12 运行库；`device = "auto"` 优先 CUDA，初始化失败自动回退 CPU/int8
 - 原生 hotwords：faster-whisper 1.2+ 同时使用 native `hotwords` 和 `initial_prompt`，产品名/缩写更稳；实测 turbo 上 EgoLite/EgoBrowser 不再被听成 eaglelite/eaglebrowser
 - `large-v3-turbo` 验证：GPU 上 15.5s / 16.8x，字符相似度 97.1%；仍保留 `large-v3` 默认，turbo 作为速度选项
+- 任务身份归一化：不同分享文案、跟踪参数和相对路径会复用同一任务目录；B 站分 P 区分为不同任务；本地同名文件用绝对路径摘要区分。旧的 `job.json` 会自动补上 `target_identity`
+- 缓存修正：`skipped` 不再当作永久缓存，补装 OCR / 配置 API Key 后会重新评估；`render.title` 进入写作缓存指纹，只改质检开关不会触发整篇重写
+- 更安全的落盘：`job.json`、阶段产物、正文、`overrides.json` 和最终 HTML/Markdown 改为原子写入，进程中断不会留下半截文件
+- `chunk_overlap` 校验：超过窗口一半或窗口非正数时直接报配置错误，避免长视频退化成大量重复请求
+- CLI 错误处理：损坏的 `job.json`、阶段产物和错误的 `--from` 阶段名不再输出 Rich traceback
 
 ### 修正
 

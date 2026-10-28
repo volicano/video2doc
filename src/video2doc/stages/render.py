@@ -7,10 +7,12 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from ..config import Config
+from ..errors import StageError
 from ..overrides import OVERRIDES_NAME, apply_overrides, load_overrides, overrides_digest
 from ..pipeline import Context, Stage
 from ..render import build_html, build_markdown
 from ..schema import Critique, Document, RenderedDoc, SourceInfo
+from ..utils.files import atomic_write_text
 
 HTML_NAME = "tutorial.html"
 MARKDOWN_NAME = "tutorial.md"
@@ -67,8 +69,14 @@ class RenderStage(Stage):
 
         html_path = ctx.job_dir / HTML_NAME
         md_path = ctx.job_dir / MARKDOWN_NAME
-        html_path.write_text(html_text, encoding="utf-8")
-        md_path.write_text(markdown, encoding="utf-8")
+        try:
+            atomic_write_text(html_path, html_text)
+            atomic_write_text(md_path, markdown)
+        except OSError as exc:
+            raise StageError(
+                f"无法写入教程文件：{ctx.job_dir}",
+                hint="检查磁盘空间和目录权限。",
+            ) from exc
 
         size = html_path.stat().st_size
         embedded = "图片已内嵌" if ctx.config.render.embed_images else "图片外链"

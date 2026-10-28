@@ -41,7 +41,9 @@ def plan_chunks(total: int, size: int, overlap: int) -> list[tuple[int, int]]:
     if total <= size:
         return [(0, total)]
 
-    step = max(1, size - max(0, overlap))
+    # 防御非法/手工构造的配置：重叠最多取半个窗口，保证步长不会退化成 1。
+    overlap = min(max(0, overlap), size // 2)
+    step = max(1, size - overlap)
     chunks: list[tuple[int, int]] = []
     start = 0
     while start < total:
@@ -233,9 +235,7 @@ def _merge_to_count(entries: list[_Entry], limit: int) -> list[_Entry]:
             key=lambda position: entries[position + 1].end - entries[position].start,
         )
         left, right = entries[index], entries[index + 1]
-        entries[index : index + 2] = [
-            replace(left, end_index=right.end_index, end=right.end)
-        ]
+        entries[index : index + 2] = [replace(left, end_index=right.end_index, end=right.end)]
     return entries
 
 

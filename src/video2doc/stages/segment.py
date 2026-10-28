@@ -20,10 +20,9 @@ class SegmentStage(Stage):
     def params(self, config: Config) -> dict:
         return {
             "enabled": config.write.enabled,
-            "write": config.write.model_dump(
-                exclude={"review", "max_rewrites", "enabled"}
-            ),
+            "write": config.write.model_dump(exclude={"review", "max_rewrites", "enabled"}),
             "llm": config.llm.model_dump(),
+            "render_title": config.render.title,
             "prompt_version": 1,
         }
 

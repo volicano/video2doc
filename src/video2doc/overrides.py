@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from .errors import StageError
 from .schema import Document, ImageRef, WrittenSection
+from .utils.files import atomic_write_text
 from .writing.materials import count_chars
 from .writing.write import IMG_RE
 
@@ -78,7 +79,13 @@ def load_overrides(job_dir: Path) -> Overrides | None:
 
 def save_overrides(job_dir: Path, overrides: Overrides) -> Path:
     path = job_dir / OVERRIDES_NAME
-    path.write_text(overrides.model_dump_json(indent=2), encoding="utf-8")
+    try:
+        atomic_write_text(path, overrides.model_dump_json(indent=2))
+    except OSError as exc:
+        raise StageError(
+            f"无法写入 {path}：{exc}",
+            hint="检查磁盘空间和目录权限。",
+        ) from exc
     return path
 
 

@@ -183,6 +183,18 @@ def test_m3_pipeline_writes_tutorial(tmp_path: Path, monkeypatch) -> None:
     assert "人工第二节" in html
 
 
+def test_render_title_participates_in_generation_fingerprint() -> None:
+    config = Config(render=RenderConfig(title="固定标题"))
+    assert SegmentStage().params(config)["render_title"] == "固定标题"
+    assert WriteStage().params(config)["render_title"] == "固定标题"
+
+
+def test_critique_settings_do_not_invalidate_write_cache() -> None:
+    base = WriteStage().params(Config())
+    changed = WriteStage().params(Config(write=WriteConfig(review=True, max_rewrites=1)))
+    assert base == changed
+
+
 def test_stages_skip_when_api_key_is_missing(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("V2DOC_NO_SUCH_KEY", raising=False)
     job = Job(job_id="t", target="x.mp4", created_at=now_iso(), updated_at=now_iso())

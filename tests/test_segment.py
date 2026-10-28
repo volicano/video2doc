@@ -52,14 +52,18 @@ def test_plan_chunks_overlaps_and_covers_tail() -> None:
     assert chunks[0] == (0, 40)
     assert all(end - start <= 40 for start, end in chunks)
     assert chunks[-1][1] == 100
-    assert all(
-        later[0] < earlier[1] for earlier, later in zip(chunks, chunks[1:], strict=False)
-    )
+    assert all(later[0] < earlier[1] for earlier, later in zip(chunks, chunks[1:], strict=False))
 
 
 def test_plan_chunks_short_transcript() -> None:
     assert plan_chunks(12, 40, 10) == [(0, 12)]
     assert plan_chunks(0, 40, 10) == []
+
+
+def test_plan_chunks_caps_absurd_overlap() -> None:
+    # 即使直接调用（绕过配置校验），也不能把步长压到 1 而产生几十个窗口。
+    assert len(plan_chunks(100, 40, 40)) == 4
+    assert len(plan_chunks(100, 40, 100)) == 4
 
 
 def test_segments_by_utterance_index_and_derives_time() -> None:
@@ -76,9 +80,7 @@ def test_segments_by_utterance_index_and_derives_time() -> None:
         ]
     )
 
-    result = segment_transcript(
-        transcript, llm, config(), title="测试视频", language="zh"
-    )
+    result = segment_transcript(transcript, llm, config(), title="测试视频", language="zh")
 
     assert [section.title for section in result.sections] == [
         "开场与目标",
@@ -135,9 +137,7 @@ def test_too_many_sections_are_merged() -> None:
             }
         ]
     )
-    result = segment_transcript(
-        transcript, llm, config(max_sections=2), title="t", language="zh"
-    )
+    result = segment_transcript(transcript, llm, config(max_sections=2), title="t", language="zh")
     assert len(result.sections) == 2
     assert result.sections[-1].end == 600.0
 

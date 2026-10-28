@@ -13,17 +13,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeVar
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 from rich.console import Console
 from rich.markup import escape
 from rich.status import Status
 
 from .config import Config
 from .errors import StageError, Video2DocError
-from .job import save_job
+from .job import save_job, target_identity
 from .providers.llm.base import fold_usage, reset_usage
 from .schema import Job, StageRecord, UsageStats
 from .utils.common import fingerprint, now_iso
+from .utils.files import atomic_write_text
+from .utils.models import load_model
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -73,13 +75,12 @@ class Context:
                 f"上游产物文件丢失：{path}",
                 hint="删掉任务目录重跑，或加上 --force。",
             )
-        try:
-            return model.model_validate_json(path.read_text(encoding="utf-8"))
-        except ValidationError as exc:
-            raise StageError(
-                f"上游产物格式不符：{stage_name}",
-                hint="可能是旧版本产物，加上 --force 重跑。",
-            ) from exc
+        return load_model(
+            path,
+            model,
+            label=f"上游产物 {stage_name}",
+            hint="可能是旧版本产物，或文件已损坏；加上 --force 重跑。",
+        )
 
 
 class Stage(ABC):
@@ -150,7 +151,7 @@ class Pipeline:
                         **stage.params(self.config),
                         **stage.local_params(self.job_dir),
                     },
-                    "source": _source_key(self.job.target),
+                    "source": _source_key(self.job.target, self.job.target_identity),
                     "upstream": upstream,
                 }
             )
@@ -160,15 +161,9 @@ class Pipeline:
             record = self.job.stages.get(stage.name)
             if not forced and self._cache_hit(record, stage_fp):
                 assert record is not None
-                if record.status == "skipped":
-                    self.console.print(
-                        f"[yellow]–[/] [bold]{stage.name:<12}[/] "
-                        f"[dim]{escape(record.summary)}（缓存）[/]"
-                    )
-                else:
-                    self.console.print(
-                        f"[dim]↻ {stage.name:<12} 命中缓存 · {escape(record.summary)}[/]"
-                    )
+                self.console.print(
+                    f"[dim]↻ {stage.name:<12} 命中缓存 · {escape(record.summary)}[/]"
+                )
                 continue
 
             self.console.print(
@@ -195,8 +190,14 @@ class Pipeline:
             summary = stage.summary(result)
             output_rel = f"stages/{stage.name}.json"
             output_path = self.job_dir / output_rel
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+            try:
+                atomic_write_text(output_path, result.model_dump_json(indent=2))
+            except OSError as exc:
+                self._record_failure(stage, stage_fp, f"写入阶段产物失败：{exc}")
+                raise StageError(
+                    f"无法写入阶段产物：{output_path}",
+                    hint="检查磁盘空间和目录权限。",
+                ) from exc
 
             self.job.stages[stage.name] = StageRecord(
                 name=stage.name,
@@ -257,22 +258,27 @@ class Pipeline:
         self._save()
 
     def _cache_hit(self, record: StageRecord | None, stage_fp: str) -> bool:
-        if record is None or record.status not in ("done", "skipped"):
+        # skipped 只是一次运行时的临时判断（例如当时缺 API Key / OCR），
+        # 环境变化后必须重新评估，不能当成 done 直接复用。
+        if record is None or record.status != "done":
             return False
         if record.fingerprint != stage_fp:
             return False
-        if record.status == "done":
-            return bool(record.output) and (self.job_dir / record.output).exists()
-        return True
+        return bool(record.output) and (self.job_dir / record.output).exists()
 
 
-def _source_key(target: str) -> str:
+def _source_key(target: str, identity: str = "") -> str:
     """本地文件把大小和 mtime 算进去：视频被换掉了就该重跑。"""
-    path = Path(target).expanduser()
-    try:
-        if path.is_file():
-            stat = path.stat()
-            return f"file:{path.resolve()}:{stat.st_size}:{int(stat.st_mtime)}"
-    except OSError:
-        pass
-    return f"target:{target}"
+    paths = [Path(target).expanduser()]
+    if identity.startswith("file:"):
+        # 旧任务的目标可能是相对路径；优先用归一化身份里的绝对路径，
+        # 这样换工作目录 resume 时仍然能正确检查文件是否被替换。
+        paths.insert(0, Path(identity.removeprefix("file:")))
+    for path in paths:
+        try:
+            if path.is_file():
+                stat = path.stat()
+                return f"file:{path.resolve()}:{stat.st_size}:{int(stat.st_mtime)}"
+        except OSError:
+            continue
+    return f"target:{identity or target_identity(target)}"

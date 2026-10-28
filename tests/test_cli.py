@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from video2doc.cli import _collect_status, _read_targets
+from typer.testing import CliRunner
+
+from video2doc.cli import _collect_status, _read_targets, app
 from video2doc.schema import Job, SourceInfo, StageRecord, UsageStats
 
 
@@ -52,9 +54,7 @@ def test_collect_status_marks_finished_and_failed(tmp_path: Path) -> None:
             title="已完成的教程",
             updated="2026-10-22T10:00:00",
             stages={
-                "ingest": StageRecord(
-                    name="ingest", status="done", fingerprint="f1", elapsed=2.0
-                )
+                "ingest": StageRecord(name="ingest", status="done", fingerprint="f1", elapsed=2.0)
             },
         ),
     )
@@ -68,9 +68,7 @@ def test_collect_status_marks_finished_and_failed(tmp_path: Path) -> None:
             title="失败的教程",
             updated="2026-10-22T11:00:00",
             stages={
-                "ingest": StageRecord(
-                    name="ingest", status="done", fingerprint="f1", elapsed=3.0
-                ),
+                "ingest": StageRecord(name="ingest", status="done", fingerprint="f1", elapsed=3.0),
                 "write": StageRecord(
                     name="write",
                     status="failed",
@@ -100,6 +98,36 @@ def test_collect_status_ignores_broken_job_json(tmp_path: Path) -> None:
     (broken / "job.json").write_text("{not json", encoding="utf-8")
 
     assert _collect_status(tmp_path) == []
+
+
+def test_preview_reports_corrupt_job_without_traceback(tmp_path: Path) -> None:
+    broken = tmp_path / "BVbad"
+    broken.mkdir()
+    (broken / "job.json").write_text("{not json", encoding="utf-8")
+
+    result = CliRunner().invoke(app, ["preview", str(broken)])
+
+    assert result.exit_code == 1
+    assert "job.json" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_run_reports_unknown_from_stage_without_traceback(tmp_path: Path) -> None:
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            str(tmp_path / "clip.mp4"),
+            "--out",
+            str(tmp_path / "output"),
+            "--from",
+            "nope",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "未知阶段" in result.output
+    assert "Traceback" not in result.output
 
 
 def test_usage_accumulates_and_is_serialized(tmp_path: Path) -> None:

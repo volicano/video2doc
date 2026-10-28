@@ -53,8 +53,7 @@ def rewrite_section(
     written = written.model_copy(update={"rewritten": True})
 
     sections = [
-        written if section.index == section_index else section
-        for section in document.sections
+        written if section.index == section_index else section for section in document.sections
     ]
     updated = document.model_copy(
         update={

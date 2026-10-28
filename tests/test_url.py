@@ -49,6 +49,9 @@ def test_canonicalize_share_page_and_long_link() -> None:
     expected = "https://www.douyin.com/video/7298145681699622182"
     share_url = "https://www.iesdouyin.com/share/video/7298145681699622182/"
     assert canonicalize_douyin_url(share_url) == expected
-    assert canonicalize_douyin_url(
-        "https://www.douyin.com/video/7298145681699622182?previous_page=web_code_link"
-    ) == expected
+    assert (
+        canonicalize_douyin_url(
+            "https://www.douyin.com/video/7298145681699622182?previous_page=web_code_link"
+        )
+        == expected
+    )

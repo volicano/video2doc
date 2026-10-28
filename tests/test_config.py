@@ -3,8 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
-from video2doc.config import Config, load_config
+from video2doc.config import Config, WriteConfig, load_config
 from video2doc.errors import ConfigError
 
 
@@ -27,6 +28,18 @@ def test_example_config_is_valid(tmp_path: Path) -> None:
     assert config.write.enabled is True
     assert config.render.show_toc is True
     assert config.llm.max_tokens >= 1024
+
+
+def test_chunk_overlap_is_bounded() -> None:
+    # 重叠超过窗口一半会让步长退化成 1，长视频会发出大量几乎相同的请求。
+    with pytest.raises(ValidationError):
+        WriteConfig(chunk_utterances=40, chunk_overlap=21)
+    with pytest.raises(ValidationError):
+        WriteConfig(chunk_utterances=0, chunk_overlap=0)
+    with pytest.raises(ValidationError):
+        WriteConfig(chunk_utterances=40, chunk_overlap=-1)
+
+    assert WriteConfig(chunk_utterances=40, chunk_overlap=20).chunk_overlap == 20
 
 
 def test_load_toml_overrides(tmp_path: Path) -> None:

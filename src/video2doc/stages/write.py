@@ -20,8 +20,10 @@ class WriteStage(Stage):
     def params(self, config: Config) -> dict:
         return {
             "enabled": config.write.enabled,
-            "write": config.write.model_dump(),
+            # review / max_rewrites 只影响下游 critique，不应让整篇正文重写。
+            "write": config.write.model_dump(exclude={"review", "max_rewrites"}),
             "llm": config.llm.model_dump(),
+            "render_title": config.render.title,
             "prompt_version": 5,
         }
 

@@ -62,6 +62,22 @@ class SkippingStage(Stage):
         raise AssertionError("skip 生效时不应执行 run")
 
 
+class TogglingSkipStage(Stage):
+    name = "maybe"
+    title = "maybe"
+
+    def __init__(self) -> None:
+        self.reason: str | None = "暂时没有依赖"
+        self.calls = 0
+
+    def skip(self, ctx: Context) -> str | None:
+        return self.reason
+
+    def run(self, ctx: Context) -> BaseModel:
+        self.calls += 1
+        return Payload(value="ready")
+
+
 class FailingStage(Stage):
     name = "boom"
     title = "boom"
@@ -126,6 +142,21 @@ def test_skip_is_recorded(tmp_path: Path) -> None:
     result = Pipeline([SkippingStage()], job, tmp_path, Config(), _console()).run()
     assert result.stages["maybe"].status == "skipped"
     assert "没有需要做的事" in result.stages["maybe"].summary
+
+
+def test_skipped_stage_is_rechecked_after_dependency_appears(tmp_path: Path) -> None:
+    stage = TogglingSkipStage()
+    job = _job()
+    first = Pipeline([stage], job, tmp_path, Config(), _console()).run()
+    assert first.stages["maybe"].status == "skipped"
+    assert stage.calls == 0
+
+    # 依赖出现后（例如用户补了 API Key / 装了 OCR）必须重新执行，
+    # 不能因为旧记录是 skipped 就命中缓存。
+    stage.reason = None
+    second = Pipeline([stage], job, tmp_path, Config(), _console()).run()
+    assert second.stages["maybe"].status == "done"
+    assert stage.calls == 1
 
 
 def test_failure_is_recorded_and_raised(tmp_path: Path) -> None:

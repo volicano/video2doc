@@ -18,6 +18,7 @@ from .overrides import OVERRIDES_NAME, load_overrides, save_overrides
 from .pipeline import Context
 from .providers.llm.base import fold_usage, reset_usage
 from .schema import Alignment, Document, Job, Segmentation, WrittenSection
+from .utils.files import atomic_write_text
 from .writing import load_transcript, make_llm, resolve_language
 from .writing.rewrite import ProgressFn, rewrite_section
 
@@ -96,8 +97,13 @@ def regenerate_section(
 
 def _write_document(job_dir: Path, document: Document) -> None:
     path = job_dir / WRITE_OUTPUT
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(document.model_dump_json(indent=2), encoding="utf-8")
+    try:
+        atomic_write_text(path, document.model_dump_json(indent=2))
+    except OSError as exc:
+        raise StageError(
+            f"无法写入正文：{path}",
+            hint="检查磁盘空间和目录权限。",
+        ) from exc
 
 
 def _update_record(job: Job, document: Document) -> None:

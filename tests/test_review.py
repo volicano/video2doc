@@ -133,9 +133,7 @@ def test_save_writes_minimal_overrides_and_rerenders(
     client: httpx.Client, review: ReviewApp, tmp_path: Path
 ) -> None:
     data = client.get("/api/state").json()
-    before = hashlib.sha256(
-        (tmp_path / "stages" / "write.json").read_bytes()
-    ).hexdigest()
+    before = hashlib.sha256((tmp_path / "stages" / "write.json").read_bytes()).hexdigest()
 
     payload = {
         "title": "人工标题",
@@ -232,9 +230,7 @@ def test_review_error_is_reported_as_json(review: ReviewApp) -> None:
     assert error.hint == "改一下"
 
 
-def test_rewrite_returns_new_section_and_rerenders(
-    client: httpx.Client, monkeypatch
-) -> None:
+def test_rewrite_returns_new_section_and_rerenders(client: httpx.Client, monkeypatch) -> None:
     document = _document()
     new_section = document.sections[1].model_copy(
         update={"title": "模型重写", "markdown": "## 重写\n新内容。"}
@@ -265,9 +261,7 @@ def test_rewrite_returns_new_section_and_rerenders(
     assert data["rewrite"]["title"] == "模型重写"
 
 
-def test_rewrite_without_llm_key_is_rejected(
-    client: httpx.Client, monkeypatch
-) -> None:
+def test_rewrite_without_llm_key_is_rejected(client: httpx.Client, monkeypatch) -> None:
     monkeypatch.setattr(
         "video2doc.review.server.llm_unavailable", lambda config: "未设置 X，跳过写作"
     )

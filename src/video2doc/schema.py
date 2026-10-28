@@ -137,6 +137,8 @@ class Job(BaseModel):
     schema_version: int = SCHEMA_VERSION
     job_id: str
     target: str
+    # 归一化后的目标身份：同一个视频的不同分享文案/相对路径可以复用任务目录。
+    target_identity: str = ""
     created_at: str
     updated_at: str
     config_snapshot: dict = Field(default_factory=dict)
