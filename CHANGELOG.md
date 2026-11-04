@@ -2,6 +2,12 @@
 
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [Unreleased]
+
+### 工程
+
+- 发布改用 PyPI trusted publishing：推送 `v*` tag 后由 GitHub Actions 自动跑测试、构建并上传，不再需要本地保存 API token；流程见 [docs/发布流程.md](docs/发布流程.md)
+
 ## [0.1.2] - 2026-11-04
 
 ### 新增
