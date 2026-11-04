@@ -2,7 +2,7 @@
 
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [Unreleased]
+## [0.1.2] - 2026-11-04
 
 ### 新增
 
@@ -29,6 +29,7 @@
 
 ### 修正
 
+- PyPI 0.1.1 的包元数据没有 `gpu` extra，按 README 安装 `video2doc[local,ocr,gpu]` 时 pip 只会给出 warning 并跳过 CUDA 运行库。0.1.2 重新构建 wheel/sdist 后会包含该 extra
 - LLM JSON 解析改用 `raw_decode`：支持 Markdown 正文里的代码围栏、JSON 后面的尾随文本，以及未转义的 Windows 路径反斜杠
 - 抖音 API 403：内置 yt-dlp 上游 PR #17826 的 `x-secsdk-web-signature` 请求签名兼容层；yt-dlp 正式发版包含该修复后会自动跳过
 
@@ -86,3 +87,4 @@
 
 [0.1.0]: https://github.com/volicano/video2doc/releases/tag/v0.1.0
 [0.1.1]: https://github.com/volicano/video2doc/releases/tag/v0.1.1
+[0.1.2]: https://github.com/volicano/video2doc/releases/tag/v0.1.2

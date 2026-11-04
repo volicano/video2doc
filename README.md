@@ -57,12 +57,23 @@ pip install "video2doc[local,ocr,gpu]"
 pip install video2doc
 ```
 
+> PyPI 上的 0.1.1 还没有 `gpu` extra。如果你现在用 0.1.1，请先装 `[local,ocr]`，再手动补 CUDA 12 运行库：
+>
+> ```bash
+> pip install "video2doc[local,ocr]"
+> pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+> ```
+>
+> 从源码安装或 0.1.2 发布后，才可以直接使用上面的 `[local,ocr,gpu]`。
+
 从源码安装（参与开发）：
 
 ```bash
 git clone https://github.com/volicano/video2doc
 cd video2doc
 pip install -e ".[dev,local,ocr]"
+# 有 NVIDIA 显卡时加 gpu extra
+# pip install -e ".[dev,local,ocr,gpu]"
 ```
 
 Windows 装 ffmpeg：
